@@ -59,7 +59,7 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-switch", "data-theme", "Deco", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
@@ -169,6 +169,9 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"data-copy-link",
 		"execCommand",
 		"fallbackCopy",
+		"speakeasy-theme",
+		"applyTheme",
+		"data-theme",
 	} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("app.js missing %s", needle)

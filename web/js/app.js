@@ -1,5 +1,6 @@
 (() => {
   const REFRESH_WS_PATH = "/api/v.1/refresh/websocket";
+  const THEME_KEY = "speakeasy-theme";
 
   const state = {
     view: "welcome",
@@ -74,6 +75,24 @@
     el.status.classList.remove("online", "offline", "loading");
     el.status.classList.add(kind);
     el.statusLabel.textContent = label;
+  }
+
+  function currentTheme() {
+    const t = document.documentElement.getAttribute("data-theme");
+    return t === "night" ? "night" : "deco";
+  }
+
+  function applyTheme(name) {
+    const theme = name === "night" ? "night" : "deco";
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch (_) {}
+    document.querySelectorAll(".theme-opt").forEach((btn) => {
+      const on = btn.getAttribute("data-theme") === theme;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
   }
 
   async function getJSON(path) {
@@ -1406,6 +1425,10 @@
     setStatus("loading", "Refreshing");
     refresh();
   });
+  document.querySelectorAll(".theme-opt").forEach((btn) => {
+    btn.addEventListener("click", () => applyTheme(btn.getAttribute("data-theme")));
+  });
+  applyTheme(currentTheme());
   if (el.adminOpen) {
     el.adminOpen.addEventListener("click", () => openInviteModal());
   }
