@@ -3311,6 +3311,10 @@ input:focus,
   display: block;
 }
 
+.btn-copy.is-copied {
+  color: var(--accent);
+}
+
 .secrets-redacted {
   color: var(--warn);
   font-weight: 700;

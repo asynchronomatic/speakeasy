@@ -20,6 +20,7 @@ import (
 	"github.com/sethvargo/go-retry"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/autoip"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
@@ -242,7 +243,14 @@ func (p *Proxy) Serve(ctx context.Context) error {
 		log.WithName("proxy").Eventf("Proxy Service Exited")
 	}()
 
-	log.WithName("proxy").Eventf("Proxy Service Started")
+	proxyLink, err := autoip.OutboundIP()
+	if err != nil {
+		proxyLink = fmt.Sprintf("http://127.0.0.1%s", p.listen)
+	} else {
+		proxyLink = fmt.Sprintf("http://%s%s", proxyLink, p.listen)
+	}
+
+	log.WithName("proxy").Eventf("Proxy Service Started ( %s )", proxyLink)
 	<-ctx.Done()
 	log.WithName("proxy").Eventf("Proxy Service Shutting Down")
 	return svr.Shutdown(context.Background())

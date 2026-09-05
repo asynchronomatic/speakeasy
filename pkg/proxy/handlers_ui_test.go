@@ -167,6 +167,8 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"data.enabled || data.Enabled",
 		"slice(-16)",
 		"data-copy-link",
+		"execCommand",
+		"fallbackCopy",
 	} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("app.js missing %s", needle)
