@@ -304,6 +304,9 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 
 	p.mux.HandleFunc("GET /{$}", p.uiRootHandler)
 	p.mux.HandleFunc("GET /ui", p.uiHandler)
+	p.mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.FileServer(uiFileSystem()).ServeHTTP(w, r)
+	})
 
 	p.mux.HandleFunc("/api/v.1/refresh/websocket", p.notifier.Handle)
 
