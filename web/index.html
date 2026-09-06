@@ -11,14 +11,15 @@
   <script>
     (function () {
       try {
+        var allowed = { night: 1, deco: 1, cyber: 1 };
         var t = localStorage.getItem("speakeasy-theme") || "deco";
-        document.documentElement.setAttribute("data-theme", t === "night" ? "night" : "deco");
+        document.documentElement.setAttribute("data-theme", allowed[t] ? t : "deco");
       } catch (e) {
         document.documentElement.setAttribute("data-theme", "deco");
       }
     })();
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Josefin+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Josefin+Sans:wght@400;500;600;700&family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/ui/css/styles.css">
 </head>
 <body>
@@ -48,6 +49,7 @@
         <div class="theme-switch" role="group" aria-label="Color theme">
           <button type="button" class="theme-opt" data-theme="night" aria-pressed="false">Night</button>
           <button type="button" class="theme-opt" data-theme="deco" aria-pressed="true">Deco</button>
+          <button type="button" class="theme-opt" data-theme="cyber" aria-pressed="false">Cyber</button>
         </div>
       </div>
     </header>
@@ -105,7 +107,7 @@
         </button>
         <div class="sidebar-spacer"></div>
         <div class="sidebar-sep"></div>
-        <button type="button" class="sidebar-item hidden" id="nav-admin" data-view="admin" hidden>
+        <button type="button" class="sidebar-item" id="nav-admin" data-view="admin">
           <span class="mailbox-icon-wrap">
             <svg class="mailbox-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="5" y="11" width="14" height="10" rx="2"/>
@@ -113,7 +115,7 @@
             </svg>
           </span>
           <span class="sidebar-item-label">Admin</span>
-          <span class="sidebar-item-count" id="admin-count">0</span>
+          <span class="sidebar-item-count hidden" id="admin-count" hidden>0</span>
         </button>
         <button type="button" class="sidebar-item" data-view="settings">
           <span class="mailbox-icon-wrap">
@@ -278,59 +280,75 @@
             <h2>Admin</h2>
             <p class="muted">Manage mesh nodes and invite links</p>
           </div>
-          <div class="admin-section">
-            <div class="admin-section-header">
-              <h3>Nodes</h3>
-            </div>
-            <p id="admin-nodes-error" class="admin-error hidden" hidden></p>
-            <div class="table-wrap">
-              <table class="data-table" id="admin-nodes-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Peer ID</th>
-                    <th>Mesh</th>
-                    <th>Invited as</th>
-                    <th>Added</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="admin-nodes-body">
-                  <tr><td colspan="6" class="empty">Loading nodes…</td></tr>
-                </tbody>
-              </table>
+          <div id="admin-locked">
+            <div class="welcome-card">
+              <h3>Enter admin token</h3>
+              <p>This proxy is not connected to the admin controller. Enter the admin secret to manage nodes and invites.</p>
+              <form id="admin-enable-form" class="admin-enable-form">
+                <label class="admin-field">
+                  <span>Admin token</span>
+                  <input type="password" id="admin-token" placeholder="admin secret" autocomplete="off" required>
+                </label>
+                <p id="admin-enable-error" class="admin-error hidden" hidden></p>
+                <button type="submit" class="btn btn-primary" id="admin-enable-submit">Enable</button>
+              </form>
             </div>
           </div>
-          <div class="admin-section">
-            <div class="admin-section-header">
-              <h3>Invites</h3>
-              <button type="button" class="btn btn-primary" id="admin-invite-open">New Invite</button>
+          <div id="admin-unlocked" class="hidden" hidden>
+            <div class="admin-section">
+              <div class="admin-section-header">
+                <h3>Nodes</h3>
+              </div>
+              <p id="admin-nodes-error" class="admin-error hidden" hidden></p>
+              <div class="table-wrap">
+                <table class="data-table" id="admin-nodes-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Peer ID</th>
+                      <th>Mesh</th>
+                      <th>Invited as</th>
+                      <th>Added</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-nodes-body">
+                    <tr><td colspan="6" class="empty">Loading nodes…</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <p id="admin-invite-error" class="admin-error hidden" hidden></p>
-            <div id="admin-invite-created" class="admin-created hidden" hidden>
-              <span>Invite created</span>
-              <span class="invite-link-cell">
-                <code id="admin-invite-link"></code>
-                <button type="button" class="btn btn-ghost btn-copy" id="admin-invite-copy" title="Copy invite link" aria-label="Copy invite link">
-                  <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-              </span>
-            </div>
-            <div class="table-wrap">
-              <table class="data-table" id="admin-invites-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Link</th>
-                    <th>Expires</th>
-                    <th>Use</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="admin-invites-body">
-                  <tr><td colspan="5" class="empty">Loading invites…</td></tr>
-                </tbody>
-              </table>
+            <div class="admin-section">
+              <div class="admin-section-header">
+                <h3>Invites</h3>
+                <button type="button" class="btn btn-primary" id="admin-invite-open">New Invite</button>
+              </div>
+              <p id="admin-invite-error" class="admin-error hidden" hidden></p>
+              <div id="admin-invite-created" class="admin-created hidden" hidden>
+                <span>Invite created</span>
+                <span class="invite-link-cell">
+                  <code id="admin-invite-link"></code>
+                  <button type="button" class="btn btn-ghost btn-copy" id="admin-invite-copy" title="Copy invite link" aria-label="Copy invite link">
+                    <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </span>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table" id="admin-invites-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Link</th>
+                      <th>Expires</th>
+                      <th>Use</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-invites-body">
+                    <tr><td colspan="5" class="empty">Loading invites…</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -338,9 +356,32 @@
         <section id="view-settings" class="view" data-view="settings">
           <div class="page-header">
             <h2>Settings</h2>
-            <p class="muted" id="settings-subtitle">Current contents of config.yaml</p>
+            <p class="muted">Local model backends on this node</p>
           </div>
-          <pre class="settings-yaml" id="settings-yaml">Loading…</pre>
+          <div class="admin-section">
+            <div class="admin-section-header">
+              <h3>Providers</h3>
+              <button type="button" class="btn btn-primary" id="provider-open">New Provider</button>
+            </div>
+            <p id="providers-error" class="admin-error hidden" hidden></p>
+            <div class="table-wrap">
+              <table class="data-table" id="providers-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Base URL</th>
+                    <th>Discovery</th>
+                    <th>Visibility</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="providers-body">
+                  <tr><td colspan="6" class="empty">Loading providers…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -376,6 +417,82 @@
         <div class="modal-footer-actions">
           <button type="button" class="btn btn-outline" data-close-invite-modal>Cancel</button>
           <button type="submit" class="btn btn-primary" id="admin-invite-create">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="provider-modal" class="modal hidden" hidden>
+    <div class="modal-backdrop" data-close-provider-modal></div>
+    <div class="modal-card modal-card-provider" role="dialog" aria-modal="true" aria-labelledby="provider-modal-title">
+      <div class="modal-header">
+        <h3 id="provider-modal-title">New provider</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-provider-modal aria-label="Close">Close</button>
+      </div>
+      <form id="provider-form" class="modal-form">
+        <div class="modal-body">
+          <div class="provider-form-grid">
+            <label class="admin-field">
+              <span>ID</span>
+              <input type="text" id="provider-id" placeholder="localhost" autocomplete="off" required>
+            </label>
+            <label class="admin-field">
+              <span>Type</span>
+              <select id="provider-type" class="select-input">
+                <option value="ollama">ollama</option>
+                <option value="openai">openai</option>
+                <option value="test">test</option>
+              </select>
+            </label>
+            <label class="admin-field provider-field-span">
+              <span>Base URL</span>
+              <input type="text" id="provider-base-url" placeholder="http://127.0.0.1:11434" autocomplete="off" required>
+            </label>
+            <label class="admin-field">
+              <span>Token</span>
+              <input type="password" id="provider-token" placeholder="optional" autocomplete="off">
+            </label>
+            <label class="admin-field">
+              <span>Model discovery</span>
+              <select id="provider-discovery" class="select-input">
+                <option value="pinned">pinned</option>
+                <option value="all">all</option>
+                <option value="whitelist">whitelist</option>
+              </select>
+            </label>
+            <label class="admin-check provider-field-span">
+              <input type="checkbox" id="provider-private">
+              <span>Private (not exported to the mesh)</span>
+            </label>
+          </div>
+          <div class="provider-models-section">
+            <div class="admin-section-header">
+              <div class="provider-models-heading">
+                <h3>Models</h3>
+                <p class="muted">Model whitelist (only the listed models will be exported)</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="provider-model-add">Add model</button>
+            </div>
+            <div class="table-wrap provider-models-wrap">
+              <table class="data-table" id="provider-models-table">
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Private</th>
+                    <th>Capabilities</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="provider-models-body">
+                  <tr class="provider-models-empty"><td colspan="4" class="empty">No models listed.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p id="provider-modal-error" class="admin-error hidden" hidden></p>
+        </div>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-outline" data-close-provider-modal>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="provider-create">Add</button>
         </div>
       </form>
     </div>

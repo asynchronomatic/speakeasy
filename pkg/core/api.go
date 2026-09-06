@@ -58,4 +58,6 @@ type MeshServiceProvider interface {
 
 	WithHandlerFunc(h http.HandlerFunc)
 	WithUpdateHandlerFunc(h UpdateHandlerFunc)
+
+	AdminAddress() string
 }

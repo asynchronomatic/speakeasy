@@ -68,6 +68,14 @@ func (d *DiscoveryManager) listenForMeshEvents() {
 	})
 	for e := range sub.Out() {
 		switch ev := e.(type) {
+		case event.EvtPeerIdentificationCompleted,
+			event.EvtPeerConnectednessChanged,
+			event.EvtHostReachableAddrsChanged:
+
+			log.WithName("disc").Debugf("%T: %+v", e, ev)
+			// Force an update from the system
+			_ = d.onUpdate(core.PeerNode{ID: ""}, false)
+
 		default:
 			log.WithName("disc").Debugf("%T: %+v", e, ev)
 		}
@@ -172,6 +180,8 @@ func (d *DiscoveryManager) listenForPeerUpdates() {
 	}
 }
 
+// GetPeerMap currently fetches the peers from the admin node
+// FIXME: We should keep track of who is actually connected to us instead to reduc the load on the admin server
 func (d *DiscoveryManager) GetPeerMap() (map[string]api.Node, error) {
 	peers, err := d.admin.GetPeers()
 	if err != nil {

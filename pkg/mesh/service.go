@@ -226,6 +226,10 @@ func (m *Service) WithHandlerFunc(h http.HandlerFunc) {
 	m.handler = h
 }
 
+func (m *Service) AdminAddress() string {
+	return m.config.Address
+}
+
 func (m *Service) WithUpdateHandlerFunc(h core.UpdateHandlerFunc) {
 	m.discovery.UpdateHandler(h)
 }
