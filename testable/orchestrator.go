@@ -13,8 +13,9 @@ import (
 // MeshOrchestrator implements the "notion of the p2p network"  it creates a fake P2P network that satisfies the interfaces
 // of the proxy.  This allows us to test the proxy in an environment where there is no actual P2P network running
 type MeshOrchestrator struct {
-	nodes map[string]*MeshNode
-	lock  sync.Mutex
+	nodes     map[string]*MeshNode
+	lock      sync.Mutex
+	adminAddr string
 }
 
 func (t *MeshOrchestrator) Connect(mn *MeshNode) error {
@@ -100,6 +101,21 @@ func (t *MeshOrchestrator) GetPeerMeshInfo(peer core.PeerNode) *core.MeshInfo {
 
 	info.AdvertisedAddresses = append(info.AdvertisedAddresses, mn.node.ID)
 	return info
+}
+
+func (t *MeshOrchestrator) SetAdminAddress(addr string) {
+	t.lock.Lock()
+	t.adminAddr = addr
+	t.lock.Unlock()
+}
+
+func (t *MeshOrchestrator) AdminAddress() string {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.adminAddr != "" {
+		return t.adminAddr
+	}
+	return "http://localhost"
 }
 
 func (t *MeshOrchestrator) NewMeshNode(id string, name string) *MeshNode {

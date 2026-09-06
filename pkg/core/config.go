@@ -13,20 +13,20 @@ var DefaultAdminPort = 4002
 var DefaultProxyListen = ":4080"
 
 type ModelConfig struct {
-	Model        string
-	Private      bool
-	Capabilities []string
-	Tools        []string // any builtin tools
+	Model        string   `yaml:"model" json:"model"`
+	Private      bool     `yaml:"private" json:"private"`
+	Capabilities []string `yaml:"capabilities" json:"capabilities"`
+	Tools        []string `yaml:"tools" json:"tools"`
 }
 
 type Provider struct {
-	ID        string
-	Type      string `yaml:"type"`     // Provider name (ollama, openai, etc)
-	BaseURL   string `yaml:"base_url"` // BaseURL contains the API endpoint for the given provider
-	Token     string `yaml:"token"`    // Token or access key used to access the api
-	Private   bool   `yaml:"private"`  // Private indicates that this provider should not be exposed to the mesh
-	Discovery string `yaml:"model_discovery"`
-	Models    []ModelConfig
+	ID        string        `yaml:"id" json:"id"`
+	Type      string        `yaml:"type" json:"type"`
+	BaseURL   string        `yaml:"base_url" json:"base_url"`
+	Token     string        `yaml:"token" json:"token"`
+	Private   bool          `yaml:"private" json:"private"`
+	Discovery string        `yaml:"model_discovery" json:"model_discovery"`
+	Models    []ModelConfig `yaml:"models" json:"models"`
 }
 
 type EnabledModel struct {
@@ -86,18 +86,31 @@ func applyConfigDefaults(config *Config) {
 	}
 }
 
-func LoadConfig() (*Config, error) {
+func LoadConfigFile() (*Config, error) {
 	config := &Config{}
-
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		return nil, err
 	}
-
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, err
 	}
+	return config, nil
+}
 
+func SaveConfig(config *Config) error {
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile("config.yaml", data, 0o600)
+}
+
+func LoadConfig() (*Config, error) {
+	config, err := LoadConfigFile()
+	if err != nil {
+		return nil, err
+	}
 	applyConfigDefaults(config)
 	return config, nil
 }

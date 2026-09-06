@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 
@@ -27,7 +28,7 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	defer cancel()
 
 	// NOTE: we do not need to immediately dial here, we will directly dial via our client
-	//ctx = network.WithForceDirectDial(ctx, "mdns")
+	ctx = network.WithForceDirectDial(ctx, "mdns")
 	err := n.h.Connect(ctx, pi)
 	if err != nil {
 		log.Errorf("MDNS: %v\n", err)

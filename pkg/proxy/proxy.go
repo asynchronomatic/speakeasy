@@ -144,14 +144,17 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 // Returns an error if the model fetch from a peer fails.
 func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	log.Eventf("ollama.proxy.OnPeerUpdate: %s [Remove:%t]\n", peer, remove)
-	// fetch models from peer
-	if remove {
-		p.modelRouter.RemovePeer(peer)
-		p.notifier.Broadcast()
+	// Always notify if we saw a change
+	defer p.notifier.Broadcast()
+	if peer.ID == "" {
 		return nil
 	}
 
-	p.notifier.Broadcast()
+	// fetch models from peer
+	if remove {
+		p.modelRouter.RemovePeer(peer)
+		return nil
+	}
 
 	// Peers that registered at the same time are often not dialable yet
 	// (circuit reservation / swarm backoff). Retry before giving up;
@@ -178,8 +181,6 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	// merge models into out model state
 	log.WithName("proxy").Eventf("Adding peer models %+v", models)
 	p.modelRouter.AddPeerModels(peer, models)
-
-	p.notifier.Broadcast()
 	return nil
 }
 
@@ -293,7 +294,13 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
 	p.mux.HandleFunc("GET /api/mesh/config", p.uiConfigHandler)
 
-	p.mux.HandleFunc("GET /api/admin/enabled", p.handle(p.withAdmin(p.adminEnabledHandler)))
+	p.mux.HandleFunc("GET /api/mesh/providers", p.handle(p.providersListHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers", p.handle(p.providerAddHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.handle(p.providerUpdateHandler))
+	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.handle(p.providerDeleteHandler))
+
+	p.mux.HandleFunc("GET /api/admin/enabled", p.handle(p.adminEnabledHandler))
+	p.mux.HandleFunc("POST /api/admin/enabled", p.handle(p.adminEnableHandler))
 
 	p.mux.HandleFunc("POST /api/admin/invite", p.handle(p.withAdmin(p.adminCreateInvitedHandler)))
 	p.mux.HandleFunc("GET /api/admin/invite", p.handle(p.withAdmin(p.adminListInvitesHandler)))

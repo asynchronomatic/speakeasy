@@ -13,6 +13,8 @@
     invites: [],
     adminNodes: [],
     createdInvite: null,
+    providers: [],
+    editingProvider: null,
     meshSize: { w: 0, h: 0 },
     selectedPeer: null,
     expandedPeer: null,
@@ -46,8 +48,20 @@
     chatSend: document.getElementById("chat-send"),
     btnNewChat: document.getElementById("btn-new-chat"),
     chatPrivacy: document.getElementById("chat-privacy"),
-    settingsYaml: document.getElementById("settings-yaml"),
-    settingsSubtitle: document.getElementById("settings-subtitle"),
+    providersBody: document.getElementById("providers-body"),
+    providersError: document.getElementById("providers-error"),
+    providerOpen: document.getElementById("provider-open"),
+    providerModal: document.getElementById("provider-modal"),
+    providerForm: document.getElementById("provider-form"),
+    providerId: document.getElementById("provider-id"),
+    providerType: document.getElementById("provider-type"),
+    providerBaseURL: document.getElementById("provider-base-url"),
+    providerToken: document.getElementById("provider-token"),
+    providerDiscovery: document.getElementById("provider-discovery"),
+    providerPrivate: document.getElementById("provider-private"),
+    providerModelsBody: document.getElementById("provider-models-body"),
+    providerModelAdd: document.getElementById("provider-model-add"),
+    providerModalError: document.getElementById("provider-modal-error"),
     welcomeOpenai: document.getElementById("welcome-openai-url"),
     welcomeModels: document.getElementById("welcome-models-url"),
     welcomeChat: document.getElementById("welcome-chat-url"),
@@ -55,6 +69,11 @@
     welcomeLocalNote: document.getElementById("welcome-local-note"),
     navAdmin: document.getElementById("nav-admin"),
     adminCount: document.getElementById("admin-count"),
+    adminLocked: document.getElementById("admin-locked"),
+    adminUnlocked: document.getElementById("admin-unlocked"),
+    adminEnableForm: document.getElementById("admin-enable-form"),
+    adminToken: document.getElementById("admin-token"),
+    adminEnableError: document.getElementById("admin-enable-error"),
     adminOpen: document.getElementById("admin-invite-open"),
     adminModal: document.getElementById("admin-invite-modal"),
     adminForm: document.getElementById("admin-invite-form"),
@@ -77,13 +96,18 @@
     el.statusLabel.textContent = label;
   }
 
+  const THEMES = ["night", "deco", "cyber"];
+
+  function normalizeTheme(name) {
+    return THEMES.includes(name) ? name : "deco";
+  }
+
   function currentTheme() {
-    const t = document.documentElement.getAttribute("data-theme");
-    return t === "night" ? "night" : "deco";
+    return normalizeTheme(document.documentElement.getAttribute("data-theme"));
   }
 
   function applyTheme(name) {
-    const theme = name === "night" ? "night" : "deco";
+    const theme = normalizeTheme(name);
     document.documentElement.setAttribute("data-theme", theme);
     try {
       localStorage.setItem(THEME_KEY, theme);
@@ -1001,28 +1025,265 @@
     }, 1200);
   }
 
+  function providerField(p, ...keys) {
+    for (const k of keys) {
+      if (p[k] != null && p[k] !== "") return p[k];
+    }
+    return "";
+  }
+
+  function renderProviders() {
+    if (!el.providersBody) return;
+    if (!state.providers.length) {
+      el.providersBody.innerHTML = `<tr><td colspan="6" class="empty">No providers configured. Add one to export local models.</td></tr>`;
+      return;
+    }
+    el.providersBody.innerHTML = state.providers.map((p) => {
+      const id = String(providerField(p, "id", "ID") || "");
+      const type = providerField(p, "type", "Type") || "—";
+      const url = providerField(p, "base_url", "BaseURL") || "—";
+      const disc = providerField(p, "model_discovery", "Discovery") || "—";
+      const priv = !!(p.private || p.Private);
+      const vis = priv
+        ? `<span class="badge badge-private">private</span>`
+        : `<span class="badge badge-shared">shared</span>`;
+      return `<tr>
+        <td>${escapeHTML(id)}</td>
+        <td>${escapeHTML(type)}</td>
+        <td class="mono">${escapeHTML(url)}</td>
+        <td>${escapeHTML(disc)}</td>
+        <td>${vis}</td>
+        <td>
+          <button type="button" class="btn btn-outline btn-sm" data-edit-provider="${escapeHTML(id)}">Edit</button>
+          <button type="button" class="btn btn-danger btn-sm" data-remove-provider="${escapeHTML(id)}">Remove</button>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function loadProviders() {
+    const data = await getJSON("/api/mesh/providers");
+    state.providers = data.providers || data.Providers || [];
+    if (state.view === "settings") renderProviders();
+  }
+
   async function renderSettings() {
-    if (!el.settingsYaml) return;
+    setErrorEl(el.providersError, "");
     try {
-      const data = await getJSON("/api/mesh/config");
-      if (data.path && el.settingsSubtitle) {
-        el.settingsSubtitle.textContent = data.path;
-      }
-      el.settingsYaml.textContent = data.content || "";
+      await loadProviders();
+      renderProviders();
     } catch (err) {
-      el.settingsYaml.textContent = "Could not load config.yaml\n" + (err.message || err);
+      state.providers = [];
+      setErrorEl(el.providersError, err.message || String(err));
+      renderProviders();
     }
   }
 
-  function setAdminVisible(on) {
-    state.adminEnabled = !!on;
-    const nav = el.navAdmin || document.getElementById("nav-admin");
-    if (nav) {
-      nav.hidden = !on;
-      nav.classList.toggle("hidden", !on);
-      nav.setAttribute("aria-hidden", on ? "false" : "true");
+  function providerModalOpen() {
+    return el.providerModal && !el.providerModal.hidden && !el.providerModal.classList.contains("hidden");
+  }
+
+  function setSelectValue(select, value, fallback) {
+    if (!select) return;
+    const v = value || fallback;
+    if (v && !Array.from(select.options).some((o) => o.value === v)) {
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
     }
-    if (!on && state.view === "admin") showView("welcome");
+    select.value = v || fallback || "";
+  }
+
+  const PROVIDER_CAPABILITIES = ["completion", "thinking", "vision", "tools"];
+
+  function providerModelsEmptyHTML() {
+    return `<tr class="provider-models-empty"><td colspan="4" class="empty">No models listed.</td></tr>`;
+  }
+
+  function providerModelRowHTML(m) {
+    m = m || {};
+    const name = m.model || m.Model || "";
+    const priv = !!(m.private || m.Private);
+    const rawCaps = m.capabilities || m.Capabilities || [];
+    const have = [];
+    const seen = new Set();
+    for (const item of rawCaps) {
+      const s = String(item || "").trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      have.push(s);
+    }
+    const caps = PROVIDER_CAPABILITIES.slice();
+    for (const c of have) {
+      if (!caps.some((k) => k.toLowerCase() === c.toLowerCase())) caps.push(c);
+    }
+    const capHTML = caps.map((c) => {
+      const checked = have.some((h) => h.toLowerCase() === c.toLowerCase());
+      return `<label><input type="checkbox" class="provider-cap" value="${escapeHTML(c)}"${checked ? " checked" : ""}> ${escapeHTML(c)}</label>`;
+    }).join("");
+    const tools = m.tools || m.Tools || [];
+    return `<tr data-tools="${escapeHTML(JSON.stringify(tools))}">
+      <td><input type="text" class="provider-model-name" value="${escapeHTML(name)}" placeholder="model name" autocomplete="off"></td>
+      <td><label class="provider-model-priv"><input type="checkbox" class="provider-model-private"${priv ? " checked" : ""}></label></td>
+      <td><div class="provider-cap-list">${capHTML}</div></td>
+      <td><button type="button" class="btn btn-danger btn-sm" data-remove-provider-model>Remove</button></td>
+    </tr>`;
+  }
+
+  function renderProviderModels(list) {
+    if (!el.providerModelsBody) return;
+    const models = Array.isArray(list) ? list : [];
+    if (!models.length) {
+      el.providerModelsBody.innerHTML = providerModelsEmptyHTML();
+      return;
+    }
+    el.providerModelsBody.innerHTML = models.map(providerModelRowHTML).join("");
+  }
+
+  function addProviderModelRow() {
+    if (!el.providerModelsBody) return;
+    if (el.providerModelsBody.querySelector(".provider-models-empty")) {
+      el.providerModelsBody.innerHTML = "";
+    }
+    el.providerModelsBody.insertAdjacentHTML("beforeend", providerModelRowHTML({}));
+    const input = el.providerModelsBody.querySelector("tr:last-child .provider-model-name");
+    if (input) input.focus();
+  }
+
+  function collectProviderModels() {
+    if (!el.providerModelsBody) return [];
+    const out = [];
+    el.providerModelsBody.querySelectorAll("tr").forEach((tr) => {
+      if (tr.classList.contains("provider-models-empty")) return;
+      const nameEl = tr.querySelector(".provider-model-name");
+      const name = nameEl ? nameEl.value.trim() : "";
+      if (!name) return;
+      const privEl = tr.querySelector(".provider-model-private");
+      const caps = [];
+      tr.querySelectorAll(".provider-cap:checked").forEach((cb) => {
+        const v = (cb.value || "").trim();
+        if (v) caps.push(v);
+      });
+      let tools = [];
+      try {
+        const parsed = JSON.parse(tr.getAttribute("data-tools") || "[]");
+        if (Array.isArray(parsed)) tools = parsed;
+      } catch (_) {}
+      out.push({
+        model: name,
+        private: !!(privEl && privEl.checked),
+        capabilities: caps,
+        tools,
+      });
+    });
+    return out;
+  }
+
+  function fillProviderForm(p) {
+    if (el.providerForm) el.providerForm.reset();
+    const editing = !!p;
+    const id = editing ? String(providerField(p, "id", "ID") || "") : "";
+    if (el.providerId) {
+      el.providerId.value = id;
+      el.providerId.readOnly = editing;
+    }
+    setSelectValue(el.providerType, editing ? providerField(p, "type", "Type") : "", "ollama");
+    if (el.providerBaseURL) el.providerBaseURL.value = editing ? providerField(p, "base_url", "BaseURL") : "";
+    if (el.providerToken) el.providerToken.value = editing ? providerField(p, "token", "Token") : "";
+    setSelectValue(el.providerDiscovery, editing ? providerField(p, "model_discovery", "Discovery") : "", "pinned");
+    if (el.providerPrivate) el.providerPrivate.checked = !!(p && (p.private || p.Private));
+    renderProviderModels(editing ? (p.models || p.Models || []) : []);
+    const title = document.getElementById("provider-modal-title");
+    if (title) title.textContent = editing ? "Edit provider" : "New provider";
+    const submit = document.getElementById("provider-create");
+    if (submit) submit.textContent = editing ? "Save" : "Add";
+  }
+
+  function openProviderModal(existing) {
+    state.editingProvider = existing || null;
+    fillProviderForm(state.editingProvider);
+    setErrorEl(el.providerModalError, "");
+    if (el.providerModal) {
+      el.providerModal.hidden = false;
+      el.providerModal.classList.remove("hidden");
+    }
+    if (el.providerId && !state.editingProvider) el.providerId.focus();
+    else if (el.providerBaseURL) el.providerBaseURL.focus();
+  }
+
+  function closeProviderModal() {
+    state.editingProvider = null;
+    if (el.providerModal) {
+      el.providerModal.hidden = true;
+      el.providerModal.classList.add("hidden");
+    }
+    setErrorEl(el.providerModalError, "");
+  }
+
+  function findProvider(id) {
+    return state.providers.find((p) => String(providerField(p, "id", "ID")) === id) || null;
+  }
+
+  async function saveProvider(e) {
+    e.preventDefault();
+    setErrorEl(el.providerModalError, "");
+    const submit = document.getElementById("provider-create");
+    if (submit) submit.disabled = true;
+    const editing = state.editingProvider;
+    const id = (el.providerId && el.providerId.value.trim()) || "";
+    const body = {
+      id,
+      type: (el.providerType && el.providerType.value) || "ollama",
+      base_url: (el.providerBaseURL && el.providerBaseURL.value.trim()) || "",
+      token: (el.providerToken && el.providerToken.value) || "",
+      private: !!(el.providerPrivate && el.providerPrivate.checked),
+      model_discovery: (el.providerDiscovery && el.providerDiscovery.value) || "pinned",
+      models: collectProviderModels(),
+    };
+    try {
+      if (editing) {
+        await sendJSON("/api/mesh/providers/" + encodeURIComponent(id), "POST", body);
+      } else {
+        await sendJSON("/api/mesh/providers", "POST", body);
+      }
+      closeProviderModal();
+      await loadProviders();
+    } catch (err) {
+      setErrorEl(el.providerModalError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  }
+
+  async function removeProvider(id) {
+    if (!id) return;
+    if (!window.confirm("Remove provider “" + id + "” from config.yaml?")) return;
+    setErrorEl(el.providersError, "");
+    try {
+      await sendJSON("/api/mesh/providers/" + encodeURIComponent(id), "DELETE");
+      await loadProviders();
+    } catch (err) {
+      setErrorEl(el.providersError, err.message || String(err));
+    }
+  }
+
+  function setPanelHidden(node, hidden) {
+    if (!node) return;
+    node.hidden = !!hidden;
+    node.classList.toggle("hidden", !!hidden);
+  }
+
+  function setAdminEnabled(on) {
+    state.adminEnabled = !!on;
+    setPanelHidden(el.adminLocked, on);
+    setPanelHidden(el.adminUnlocked, !on);
+    if (el.adminCount) {
+      el.adminCount.hidden = !on;
+      el.adminCount.classList.toggle("hidden", !on);
+    }
   }
 
   function formatInviteExpiry(unix) {
@@ -1244,13 +1505,30 @@
     if (state.view === "admin") renderAdminNodes();
   }
 
+  async function enableAdmin(e) {
+    e.preventDefault();
+    setErrorEl(el.adminEnableError, "");
+    const token = (el.adminToken && el.adminToken.value.trim()) || "";
+    const submit = document.getElementById("admin-enable-submit");
+    if (submit) submit.disabled = true;
+    try {
+      await sendJSON("/api/admin/enabled", "POST", { token });
+      if (el.adminToken) el.adminToken.value = "";
+      await checkAdmin();
+    } catch (err) {
+      setErrorEl(el.adminEnableError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  }
+
   async function checkAdmin() {
     try {
       const data = await getJSON("/api/admin/enabled");
       const on = !!(data && (data.enabled || data.Enabled));
-      setAdminVisible(on);
+      setAdminEnabled(on);
     } catch (_) {
-      setAdminVisible(false);
+      setAdminEnabled(false);
       return;
     }
     if (!state.adminEnabled) return;
@@ -1329,7 +1607,7 @@
     else if (state.view === "nodes") renderNodes();
     else if (state.view === "models") renderModels();
     else if (state.view === "chat") syncChatModels();
-    else if (state.view === "admin") renderAdmin();
+    else if (state.view === "admin" && state.adminEnabled) renderAdmin();
     else if (state.view === "settings") renderSettings();
   }
 
@@ -1345,6 +1623,8 @@
     if (name === "chat") {
       renderChatThread();
       el.chatInput.focus();
+    } else if (name === "admin" && !state.adminEnabled && el.adminToken) {
+      el.adminToken.focus();
     }
   }
 
@@ -1429,6 +1709,9 @@
     btn.addEventListener("click", () => applyTheme(btn.getAttribute("data-theme")));
   });
   applyTheme(currentTheme());
+  if (el.adminEnableForm) {
+    el.adminEnableForm.addEventListener("submit", enableAdmin);
+  }
   if (el.adminOpen) {
     el.adminOpen.addEventListener("click", () => openInviteModal());
   }
@@ -1441,8 +1724,48 @@
     });
   }
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && inviteModalOpen()) closeInviteModal();
+    if (e.key !== "Escape") return;
+    if (inviteModalOpen()) closeInviteModal();
+    else if (providerModalOpen()) closeProviderModal();
   });
+  if (el.providerOpen) {
+    el.providerOpen.addEventListener("click", () => openProviderModal());
+  }
+  if (el.providerForm) {
+    el.providerForm.addEventListener("submit", saveProvider);
+  }
+  if (el.providerModelAdd) {
+    el.providerModelAdd.addEventListener("click", addProviderModelRow);
+  }
+  if (el.providerModelsBody) {
+    el.providerModelsBody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-provider-model]");
+      if (!btn) return;
+      const tr = btn.closest("tr");
+      if (tr) tr.remove();
+      if (el.providerModelsBody && !el.providerModelsBody.querySelector("tr")) {
+        el.providerModelsBody.innerHTML = providerModelsEmptyHTML();
+      }
+    });
+  }
+  if (el.providerModal) {
+    el.providerModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-provider-modal]")) closeProviderModal();
+    });
+  }
+  if (el.providersBody) {
+    el.providersBody.addEventListener("click", (e) => {
+      const edit = e.target.closest("[data-edit-provider]");
+      if (edit) {
+        const p = findProvider(edit.getAttribute("data-edit-provider"));
+        if (p) openProviderModal(p);
+        return;
+      }
+      const btn = e.target.closest("[data-remove-provider]");
+      if (!btn) return;
+      removeProvider(btn.getAttribute("data-remove-provider"));
+    });
+  }
   if (el.adminCopy) {
     el.adminCopy.addEventListener("click", () => {
       copyToClipboard(el.adminCopy.getAttribute("data-copy-link"), el.adminCopy);

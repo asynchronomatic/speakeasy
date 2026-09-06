@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
@@ -44,9 +45,113 @@ func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Re
 func TestAdminEnabledOff(t *testing.T) {
 	p := testProxy(t)
 	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status %d want 200", res.StatusCode)
+	}
+	var got struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Enabled {
+		t.Fatal("expected enabled=false")
+	}
+}
+
+func TestAdminEnableToken(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/admin/invite", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer good-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.ListInvitesResponse{Invites: []api.InviteInfo{}})
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	writeTestConfig(t, testConfigYAML)
+
+	orch := testable.NewMeshOrchestrator()
+	orch.SetAdminAddress(ts.URL)
+	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": ""})
+	if res.StatusCode != http.StatusBadRequest {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("empty token %d: %s", res.StatusCode, b)
+	}
 	res.Body.Close()
-	if res.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status %d want 503", res.StatusCode)
+
+	res = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "bad-token"})
+	if res.StatusCode != http.StatusPreconditionFailed {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("bad token %d: %s", res.StatusCode, b)
+	}
+	res.Body.Close()
+
+	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
+	var status struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if status.Enabled {
+		t.Fatal("enabled after bad token")
+	}
+	cfg, err := core.LoadConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Admin.Secret != "s" {
+		t.Fatalf("secret changed after bad token: %q", cfg.Admin.Secret)
+	}
+
+	res = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "good-token"})
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("good token %d: %s", res.StatusCode, b)
+	}
+	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if !status.Enabled {
+		t.Fatal("expected enabled=true")
+	}
+
+	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
+	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if !status.Enabled {
+		t.Fatal("GET enabled still false after enable")
+	}
+
+	cfg, err = core.LoadConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Admin.Secret != "good-token" {
+		t.Fatalf("secret not saved: %q", cfg.Admin.Secret)
+	}
+	if cfg.Mesh.Name != "box" || len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" {
+		t.Fatalf("other config fields changed: %+v", cfg)
 	}
 }
 

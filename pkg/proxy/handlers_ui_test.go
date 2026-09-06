@@ -59,12 +59,12 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-switch", "data-theme", "Deco", "/ui/favicon.ico", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-switch", "data-theme", "Deco", "Cyber", `data-theme="cyber"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
 	}
-	for _, old := range []string{"ModelMesh", "sk-modelmesh"} {
+	for _, old := range []string{"ModelMesh", "sk-modelmesh", "settings-yaml", "config.yaml"} {
 		if strings.Contains(body, old) {
 			t.Fatalf("index still has old branding %s", old)
 		}
@@ -160,6 +160,8 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"/api/admin/invite",
 		"/api/admin/node",
 		"checkAdmin",
+		"enableAdmin",
+		"setAdminEnabled",
 		"createInvite",
 		"openInviteModal",
 		"revokeInvite",
@@ -171,7 +173,17 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"fallbackCopy",
 		"speakeasy-theme",
 		"applyTheme",
+		"normalizeTheme",
 		"data-theme",
+		"cyber",
+		"/api/mesh/providers",
+		"openProviderModal",
+		"saveProvider",
+		"removeProvider",
+		"data-edit-provider",
+		"collectProviderModels",
+		"addProviderModelRow",
+		"data-remove-provider-model",
 	} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("app.js missing %s", needle)

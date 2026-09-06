@@ -14,6 +14,10 @@ type MeshNode struct {
 	orchestrator  *MeshOrchestrator
 }
 
+func (t *MeshNode) AdminAddress() string {
+	return t.orchestrator.AdminAddress()
+}
+
 func (t *MeshNode) Node() core.PeerNode {
 	return t.node
 }

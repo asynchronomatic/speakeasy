@@ -332,9 +332,10 @@ input:focus, .select-input:focus {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 5px 10px;
+  padding: 5px 8px;
   cursor: pointer;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .theme-opt + .theme-opt {
@@ -774,6 +775,12 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
   max-height: none;
 }
 
+.modal-card.modal-card-provider {
+  max-width: 920px;
+  width: min(920px, calc(100vw - 32px));
+  max-height: min(92vh, 980px);
+}
+
 #admin-invite-modal .admin-field {
   width: 100%;
   margin-bottom: 14px;
@@ -861,7 +868,124 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
   margin: 0 0 12px;
 }
 
-#view-admin.view.active {
+.admin-enable-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 16px;
+  max-width: 420px;
+}
+
+.admin-enable-form .admin-field {
+  width: 100%;
+}
+
+.admin-enable-form .admin-field input {
+  width: 100%;
+}
+
+.admin-enable-form .admin-error {
+  margin: 0;
+}
+
+#providers-table .btn + .btn {
+  margin-left: 6px;
+}
+
+#provider-modal .admin-field {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+#provider-modal .admin-field input,
+#provider-modal .admin-field .select-input {
+  width: 100%;
+}
+
+#provider-modal .admin-check {
+  padding-bottom: 0;
+  margin-bottom: 8px;
+}
+
+#provider-modal .admin-error {
+  margin: 12px 0 0;
+}
+
+.provider-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+.provider-field-span {
+  grid-column: 1 / -1;
+}
+
+.provider-models-section {
+  margin-top: 8px;
+}
+
+.provider-models-section .admin-section-header {
+  margin-bottom: 8px;
+  align-items: flex-start;
+}
+
+.provider-models-heading {
+  min-width: 0;
+}
+
+.provider-models-heading .muted {
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.provider-models-wrap {
+  min-height: 180px;
+  max-height: min(42vh, 380px);
+}
+
+#provider-models-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+#provider-models-table .provider-model-name {
+  width: 100%;
+  min-width: 140px;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.provider-model-priv {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.provider-cap-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-top: 4px;
+}
+
+.provider-cap-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#provider-models-table .btn-danger {
+  margin-top: 2px;
+}
+
+#view-admin.view.active,
+#view-settings.view.active {
   overflow: auto;
 }
 
@@ -1769,6 +1893,10 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
 }
 
 @media (max-width: 720px) {
+  .provider-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .topbar {
     flex-wrap: wrap;
     height: auto;
@@ -1958,4 +2086,125 @@ html[data-theme="deco"] .data-table th {
 
 html[data-theme="deco"] .theme-switch {
   border-color: var(--accent);
+}
+
+html[data-theme="cyber"] {
+  --bg: #06070c;
+  --bg-elevated: #0c1018;
+  --bg-panel: #10151f;
+  --bg-hover: #182030;
+  --bg-input: #080a10;
+  --border: #1a4a58;
+  --border-subtle: #122830;
+  --text: #eaf6ff;
+  --text-muted: #7eb8c9;
+  --text-dim: #4a7a8a;
+  --accent: #ff2ec8;
+  --accent-soft: rgba(255, 46, 200, 0.16);
+  --accent-hover: #ff5ae0;
+  --on-accent: #14010e;
+  --success: #c6ff00;
+  --success-soft: rgba(198, 255, 0, 0.14);
+  --warn: #ff8a1a;
+  --warn-soft: rgba(255, 138, 26, 0.16);
+  --danger: #ff3b5c;
+  --danger-soft: rgba(255, 59, 92, 0.16);
+  --danger-hover: #ff6a80;
+  --radius: 3px;
+  --radius-sm: 2px;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+  --font: "Rajdhani", "IBM Plex Sans", system-ui, sans-serif;
+  --font-display: "Orbitron", "Rajdhani", sans-serif;
+  --mono: "Share Tech Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --glow: rgba(255, 46, 200, 0.5);
+  --link-direct: #c6ff00;
+  --link-relay: #00e5ff;
+  --ring: #7b3dff;
+  --wash-1: rgba(255, 46, 200, 0.12);
+  --wash-2: rgba(0, 229, 255, 0.08);
+}
+
+html[data-theme="cyber"] body {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 47px,
+      rgba(0, 229, 255, 0.045) 47px 48px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 47px,
+      rgba(0, 229, 255, 0.035) 47px 48px
+    ),
+    radial-gradient(ellipse 90% 45% at 50% -18%, rgba(255, 46, 200, 0.16), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 95% 110%, rgba(0, 229, 255, 0.14), transparent 60%),
+    radial-gradient(ellipse 40% 30% at 10% 90%, rgba(198, 255, 0, 0.07), transparent 55%);
+}
+
+html[data-theme="cyber"] .topbar {
+  background: rgba(6, 7, 12, 0.92);
+  border-bottom: 1px solid var(--accent);
+  box-shadow: 0 1px 0 rgba(0, 229, 255, 0.35), 0 8px 24px rgba(255, 46, 200, 0.12);
+}
+
+html[data-theme="cyber"] .brand-name,
+html[data-theme="cyber"] .page-header h2,
+html[data-theme="cyber"] .welcome-card h3,
+html[data-theme="cyber"] .admin-section-header h3,
+html[data-theme="cyber"] .modal-header h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+html[data-theme="cyber"] .brand-name {
+  color: var(--accent);
+  font-size: 0.88rem;
+  text-shadow: 0 0 8px rgba(255, 46, 200, 0.7), 0 0 18px rgba(255, 46, 200, 0.35);
+}
+
+html[data-theme="cyber"] .brand-sub {
+  letter-spacing: 0.22em;
+  color: #00e5ff;
+}
+
+html[data-theme="cyber"] .logo-mark {
+  border-radius: 3px;
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(255, 46, 200, 0.35);
+}
+
+html[data-theme="cyber"] .logo-lines {
+  stroke: #00e5ff;
+}
+
+html[data-theme="cyber"] .welcome-card::before {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), #00e5ff, transparent);
+  opacity: 1;
+}
+
+html[data-theme="cyber"] .sidebar-item.is-active {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+html[data-theme="cyber"] .modal-card {
+  border-color: #00e5ff;
+  box-shadow: 0 0 24px rgba(0, 229, 255, 0.12), var(--shadow);
+}
+
+html[data-theme="cyber"] .data-table th {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: #00e5ff;
+}
+
+html[data-theme="cyber"] .theme-switch {
+  border-color: var(--accent);
+}
+
+html[data-theme="cyber"] .theme-opt {
+  letter-spacing: 0.06em;
+  padding: 5px 8px;
 }
