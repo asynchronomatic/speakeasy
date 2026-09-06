@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Speakeasy">
+  <rect width="48" height="48" fill="#0c0a08"/>
+  <rect x="4" y="4" width="40" height="40" fill="none" stroke="#d4af37" stroke-width="2"/>
+  <g fill="none" stroke="#d4af37" stroke-width="1.6" stroke-linecap="round">
+    <path d="M24 8 V16 M24 32 V40 M8 24 H16 M32 24 H40"/>
+    <path d="M12.3 12.3 l5.7 5.7 M30 30 l5.7 5.7 M35.7 12.3 l-5.7 5.7 M12.3 35.7 l5.7-5.7"/>
+  </g>
+  <circle cx="24" cy="24" r="7.2" fill="#d4af37"/>
+  <circle cx="24" cy="24" r="2.6" fill="#e0a12a"/>
+</svg>

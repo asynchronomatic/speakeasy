@@ -1,5 +1,6 @@
 (() => {
   const REFRESH_WS_PATH = "/api/v.1/refresh/websocket";
+  const THEME_KEY = "speakeasy-theme";
 
   const state = {
     view: "welcome",
@@ -74,6 +75,24 @@
     el.status.classList.remove("online", "offline", "loading");
     el.status.classList.add(kind);
     el.statusLabel.textContent = label;
+  }
+
+  function currentTheme() {
+    const t = document.documentElement.getAttribute("data-theme");
+    return t === "night" ? "night" : "deco";
+  }
+
+  function applyTheme(name) {
+    const theme = name === "night" ? "night" : "deco";
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch (_) {}
+    document.querySelectorAll(".theme-opt").forEach((btn) => {
+      const on = btn.getAttribute("data-theme") === theme;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
   }
 
   async function getJSON(path) {
@@ -1074,18 +1093,56 @@
     return `<span class="invite-link-cell"><code>${escapeHTML(tailLink(full))}</code><button type="button" class="btn btn-ghost btn-copy" data-copy-link="${escapeHTML(full)}" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">${copyIconSVG()}</button></span>`;
   }
 
+  function fallbackCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "0";
+    ta.style.width = "1px";
+    ta.style.height = "1px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (_) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function markCopied(btn, ok) {
+    if (!btn) return;
+    const label = btn.getAttribute("data-copy-label") || btn.getAttribute("title") || "Copy";
+    btn.setAttribute("data-copy-label", label);
+    btn.setAttribute("title", ok ? "Copied" : "Copy failed");
+    btn.setAttribute("aria-label", ok ? "Copied" : "Copy failed");
+    btn.classList.toggle("is-copied", ok);
+    setTimeout(() => {
+      btn.setAttribute("title", label);
+      btn.setAttribute("aria-label", label);
+      btn.classList.remove("is-copied");
+    }, 1200);
+  }
+
   function copyToClipboard(text, btn) {
-    if (!text) return;
-    const label = btn ? btn.getAttribute("title") || "Copy invite link" : "";
-    navigator.clipboard.writeText(text).then(() => {
-      if (!btn) return;
-      btn.setAttribute("title", "Copied");
-      setTimeout(() => { btn.setAttribute("title", label); }, 1200);
-    }).catch(() => {
-      if (!btn) return;
-      btn.setAttribute("title", "Copy failed");
-      setTimeout(() => { btn.setAttribute("title", label); }, 1200);
-    });
+    const value = String(text || "");
+    if (!value) {
+      markCopied(btn, false);
+      return;
+    }
+    const clip = navigator.clipboard;
+    if (clip && typeof clip.writeText === "function") {
+      clip.writeText(value).then(() => markCopied(btn, true)).catch(() => {
+        markCopied(btn, fallbackCopy(value));
+      });
+      return;
+    }
+    markCopied(btn, fallbackCopy(value));
   }
 
   function showCreatedInvite(link) {
@@ -1368,6 +1425,10 @@
     setStatus("loading", "Refreshing");
     refresh();
   });
+  document.querySelectorAll(".theme-opt").forEach((btn) => {
+    btn.addEventListener("click", () => applyTheme(btn.getAttribute("data-theme")));
+  });
+  applyTheme(currentTheme());
   if (el.adminOpen) {
     el.adminOpen.addEventListener("click", () => openInviteModal());
   }
