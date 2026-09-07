@@ -143,7 +143,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 // It fetches model information from peers on addition and merges it into the local model state.
 // Returns an error if the model fetch from a peer fails.
 func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
-	log.Eventf("ollama.proxy.OnPeerUpdate: %s [Remove:%t]\n", peer, remove)
+	log.WithName("proxy:").Eventf("OnPeerUpdate: %s [Remove:%t]\n", peer, remove)
 	// Always notify if we saw a change
 	defer p.notifier.Broadcast()
 	if peer.ID == "" {
@@ -162,7 +162,7 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
 
 	var models map[string]modeldex.ModelRoute
-	err := retry.Do(context.Background(), retry.WithMaxRetries(3, retry.NewFibonacci(2*time.Second)),
+	err := retry.Do(context.Background(), retry.WithMaxRetries(1, retry.NewFibonacci(2*time.Second)),
 		func(ctx context.Context) error {
 			var err error
 			models, err = client.GetModelsMesh()

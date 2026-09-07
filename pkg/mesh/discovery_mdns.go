@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
@@ -18,7 +17,7 @@ import (
 // relay for information.
 
 type discoveryNotifee struct {
-	h host.Host
+	discovery *DiscoveryManager
 }
 
 func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
@@ -29,17 +28,22 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 
 	// NOTE: we do not need to immediately dial here, we will directly dial via our client
 	ctx = network.WithForceDirectDial(ctx, "mdns")
-	err := n.h.Connect(ctx, pi)
+	err := n.discovery.h.Connect(ctx, pi)
 	if err != nil {
 		log.Errorf("MDNS: %v\n", err)
 	}
+
+	n.discovery.postEvent(peerEvent{
+		PeerID: pi.ID.String(),
+		Status: PeerStatusUp,
+	})
 }
 
 // EnableMDNS enables mdns discovery so that nodes running locally to each other can find each other without having
 // to report local dns entries
-func EnableMDNS(h host.Host) error {
+func EnableMDNS(d *DiscoveryManager) error {
 	log.WithName("mdns").Eventf("MDNS Discovery Enabled\n")
 	// The second argument is a service tag identifier (keep it matching across your nodes)
-	ser := mdns.NewMdnsService(h, "ollama-mesh", &discoveryNotifee{h: h})
+	ser := mdns.NewMdnsService(d.h, "ollama-mesh", &discoveryNotifee{discovery: d})
 	return ser.Start()
 }

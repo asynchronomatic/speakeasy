@@ -2,55 +2,51 @@ package mesh
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/negrel/assert"
+	"golang.org/x/exp/maps"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-type DiscoveryManager struct {
-	admin       *api.MeshClient
-	h           host.Host
-	node        core.PeerNode
-	string      map[peer.ID]struct{}
-	MDNSEnabled bool
-	onUpdate    core.UpdateHandlerFunc
+const (
+	PeerStatusUnknown = iota
+	PeerStatusRemoved = iota
+	PeerStatusDown    = iota
+	PeerStatusUp      = iota
+)
+
+type peerEvent struct {
+	PeerID string
+	Status int
 }
 
-func (d *DiscoveryManager) diffNodes(old, new map[string]api.Node) (map[string]api.Node, map[string]api.Node) {
-	selfID := d.h.ID().String()
+type peerStatus struct {
+	node        core.PeerNode
+	status      int
+	ltime       uint64
+	needsUpdate bool
+}
 
-	addedOrChanged := make(map[string]api.Node)
-	removed := make(map[string]api.Node)
+type DiscoveryManager struct {
+	ctrl            *api.MeshClient
+	h               host.Host
+	node            core.PeerNode
+	MDNSEnabled     bool
+	onUpdate        core.UpdateHandlerFunc
+	discoveryEvents chan peerEvent
 
-	// Find added or changed nodes
-	for id, newNode := range new {
-		if id == selfID { // filter self
-			continue
-		}
-
-		if oldNode, exists := old[id]; !exists || oldNode.LogicalTime != newNode.LogicalTime {
-			addedOrChanged[id] = newNode
-		}
-	}
-
-	// Find removed nodes
-	for id, oldNode := range old {
-		if id == selfID { // filter self
-			continue
-		}
-
-		if _, exists := new[id]; !exists {
-			removed[id] = oldNode
-		}
-	}
-
-	return addedOrChanged, removed
+	lock         sync.RWMutex
+	ctrlTime     uint64
+	registration *api.Registration
+	knownPeers   map[string]peerStatus
 }
 
 func (d *DiscoveryManager) listenForMeshEvents() {
@@ -68,13 +64,30 @@ func (d *DiscoveryManager) listenForMeshEvents() {
 	})
 	for e := range sub.Out() {
 		switch ev := e.(type) {
-		case event.EvtPeerIdentificationCompleted,
-			event.EvtPeerConnectednessChanged,
-			event.EvtHostReachableAddrsChanged:
+		case event.EvtPeerConnectednessChanged:
+			log.WithName("disc").Eventf("%T: %+v", e, ev)
+			if ev.Connectedness == network.Connected {
+				d.postEvent(peerEvent{
+					PeerID: ev.Peer.String(),
+					Status: PeerStatusUp,
+				})
+			} else {
+				d.postEvent(peerEvent{
+					PeerID: ev.Peer.String(),
+					Status: PeerStatusDown,
+				})
+			}
+		case event.EvtPeerIdentificationCompleted:
+			log.WithName("disc").Eventf("%T: %+v", e, ev)
+			d.postEvent(peerEvent{
+				PeerID: ev.Peer.String(),
+				Status: PeerStatusUp,
+			})
 
+		case event.EvtHostReachableAddrsChanged:
 			log.WithName("disc").Debugf("%T: %+v", e, ev)
 			// Force an update from the system
-			_ = d.onUpdate(core.PeerNode{ID: ""}, false)
+			//_ = d.onUpdate(core.PeerNode{ID: ""}, false)
 
 		default:
 			log.WithName("disc").Debugf("%T: %+v", e, ev)
@@ -83,20 +96,111 @@ func (d *DiscoveryManager) listenForMeshEvents() {
 	log.WithName("disc").Fatalf("discovery routine exited")
 }
 
-// FIXME: this needs significant rework as we have some cases here that cause
-//
-//	things to get out of sync
-//	- Node Restart ( This SHould cause Logical and LastTimes to increase )
-//	- Admin Restart ( This will cause the Logical time to rest , lastTime should increase )
-//	- When Admin is reset.. we need to trigger a full reload as there are a bunch of races... like what if logical time catches/passes our last time after the admin resets (etc)
-func (d *DiscoveryManager) listenForPeerUpdates() {
-	// register self
-	var err error
-	var registration *api.Registration
+func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
+	valid, ctrlTime, err := d.registration.Refresh()
+	if err != nil {
+		log.WithName("disc").Errorf("failed to refers registration: %v", err)
+		return nil
+	}
 
-	// FIXME: use a retryer
+	if !valid {
+		log.WithName("disc").Warnf("%s lost registration is invalid, reregistering", d.node.ID)
+		newReg, err := d.ctrl.Register(d.node.Name, d.node.ID)
+		if err != nil {
+			log.WithName("disc").Errorf("failed to register: %v", err)
+			return nil
+		}
+		log.WithName("disc").Infof("reregistered node %v", newReg)
+		d.registration = newReg
+		d.ctrlTime = 0
+	}
+
+	if ctrlTime < d.ctrlTime {
+		assert.Fail("Ctrl time is not increasing")
+	}
+
+	peerList, err := d.ctrl.GetPeers()
+	if err != nil {
+		log.WithName("disc").Warnf("failed to get peer map from controller: %v", err)
+		return nil
+	}
+
+	peerUpdates := make(map[string]peerStatus)
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	// update all our known node database to what we just found
+	for _, peer := range peerList {
+		knownPeer, ok := d.knownPeers[peer.ID]
+		if !ok {
+			knownPeer = peerStatus{
+				node:        peer,
+				ltime:       peer.LogicalTime,
+				status:      PeerStatusUnknown, // will probe
+				needsUpdate: true,
+			}
+			log.WithName("disc").Infof("new peer %v", peer.ID)
+		}
+
+		if knownPeer.ltime != peer.LogicalTime {
+			log.WithName("disc").Infof("peer ltime change %v:%v", knownPeer.ltime, peer.LogicalTime)
+			knownPeer.needsUpdate = true
+			knownPeer.ltime = peer.LogicalTime
+		}
+
+		if knownPeer.needsUpdate {
+			peerUpdates[peer.ID] = knownPeer
+		}
+
+		log.WithName("disc").Infof("ctrl peer %s NeedsUpdate: %v", knownPeer.node, knownPeer.needsUpdate)
+	}
+
+	/* THIS IS NOW HOW REMOVE SHOULD WORK
+	for peerID := range d.knownPeers {
+		if _, ok := peerUpdates[peerID]; !ok {
+			knownPeer := d.knownPeers[peerID]
+			knownPeer.status = PeerStatusRemoved
+			peerUpdates[peerID] = knownPeer
+		}
+	}*/
+	d.ctrlTime = ctrlTime
+	return peerUpdates
+}
+
+func (d *DiscoveryManager) updatePeers(peerUpdates map[string]peerStatus) {
+	for k, newState := range peerUpdates {
+		// Ignore self forom the per update list
+		if newState.node.ID == d.node.ID {
+			newState.status = PeerStatusUp
+			peerUpdates[k] = newState
+			continue
+		}
+
+		bRemove := false
+		if newState.status == PeerStatusRemoved || newState.status == PeerStatusDown {
+			bRemove = true
+		}
+
+		if err := d.onUpdate(newState.node, bRemove); err != nil {
+			newState.needsUpdate = false
+			if !bRemove {
+				newState.status = PeerStatusUp
+			}
+			peerUpdates[k] = newState
+		}
+	}
+
+	d.lock.Lock()
+	maps.Copy(d.knownPeers, peerUpdates)
+	d.lock.Unlock()
+}
+
+func (d *DiscoveryManager) listenForPeerUpdatesEx() {
+	var err error
+
+	// FIXME: use a retrier
 	for {
-		registration, err = d.admin.Register(d.node.Name, d.node.ID)
+		d.registration, err = d.ctrl.Register(d.node.Name, d.node.ID)
 		if err != nil {
 			log.WithName("disc").Errorf("failed to register: %v", err)
 			time.Sleep(time.Second * 10)
@@ -105,91 +209,58 @@ func (d *DiscoveryManager) listenForPeerUpdates() {
 		break
 	}
 
-	lastLogicalTime := uint64(0)
-	lastPeers := make(map[string]api.Node)
+	// initial seed from controller
+	log.WithName("disc").Eventf("Initial seed from controller")
+	d.updatePeers(d.loadPeersFromMeshController())
+
+	go d.listenForMeshEvents()
+	if d.MDNSEnabled {
+		go func() {
+			time.Sleep(time.Second * 1) // stall to make sure we fail initial proxy bootstrap
+			err := EnableMDNS(d)
+			if err != nil {
+				log.Warnf("MDNS Failed to start %v\n", err)
+			}
+		}()
+	}
+
 	for {
-		valid, logicalTime, err := registration.Refresh()
-		if err != nil {
-			time.Sleep(time.Minute)
-			continue
+		peerUpdates := make(map[string]peerStatus)
+
+		select {
+		case evt := <-d.discoveryEvents:
+			log.WithName("disc").Eventf("peer event %+v", evt)
+			d.lock.Lock()
+			if knownPeer, ok := d.knownPeers[string(evt.PeerID)]; ok {
+				knownPeer.needsUpdate = true
+				knownPeer.status = evt.Status
+				peerUpdates[knownPeer.node.ID] = knownPeer
+			} else {
+				log.WithName("disc").Eventf("peer not found %s/%s in %+v", evt.PeerID, string(evt.PeerID), d.knownPeers)
+				//d.queueUpdates = append(d.queueUpdates, evt)
+
+			}
+			d.lock.Unlock()
+
+		case <-time.After(time.Minute):
+			peerUpdates = d.loadPeersFromMeshController()
 		}
 
-		if !valid {
-			log.WithName("disc").Warnf("%s lost registration is invalid, reregistering", d.node.ID)
-			newReg, err := d.admin.Register(d.node.Name, d.node.ID)
-			if err != nil {
-				log.WithName("disc").Errorf("failed to register: %v", err)
-				time.Sleep(time.Second * 10)
-				continue
-			}
-			registration = newReg
-			lastLogicalTime = logicalTime
-			continue
-		}
-
-		if d.onUpdate == nil {
-			time.Sleep(time.Minute)
-			continue
-		}
-
-		if lastLogicalTime != logicalTime {
-			log.WithName("disc").Eventf("mesh.service.discovery: update received [%d | %d]", lastLogicalTime, logicalTime)
-
-			currentPeers, err := d.GetPeerMap()
-			if err != nil {
-				log.Warnf("mesh.service.discover: failed to get peer map: %v", err)
-				time.Sleep(time.Minute)
-				continue
-			}
-			goodUpdate := true
-
-			updatedPeers, removedPeers := d.diffNodes(lastPeers, currentPeers)
-			for _, node := range removedPeers {
-				log.WithName("disc").Eventf("peer down %s", node.ID)
-				if err := d.onUpdate(core.NewPeerNode(node.ID, node.Name), true); err != nil {
-					// save the node, removal failed
-					n, ok := lastPeers[node.ID]
-					if !ok {
-						panic("node not found in lastPeers")
-					}
-
-					currentPeers[n.ID] = n
-					goodUpdate = false
-				}
-			}
-
-			for _, node := range updatedPeers {
-				log.WithName("disc").Eventf("peer updated %s", node.ID)
-				if err := d.onUpdate(core.NewPeerNode(node.ID, node.Name), false); err != nil {
-					n, ok := currentPeers[node.ID]
-					if !ok {
-						panic("node not found in currentPeers")
-					}
-					n.LastUpdate = time.Time{}
-					currentPeers[n.ID] = n
-					goodUpdate = false
-				}
-			}
-
-			lastPeers = currentPeers
-			if goodUpdate {
-				lastLogicalTime = logicalTime
-			}
-		}
-		time.Sleep(time.Minute)
+		d.updatePeers(peerUpdates)
 	}
 }
 
-// GetPeerMap currently fetches the peers from the admin node
-// FIXME: We should keep track of who is actually connected to us instead to reduc the load on the admin server
+func (d *DiscoveryManager) postEvent(event peerEvent) {
+	d.discoveryEvents <- event
+}
+
+// GetPeerMap returns the nodes we know about
 func (d *DiscoveryManager) GetPeerMap() (map[string]api.Node, error) {
-	peers, err := d.admin.GetPeers()
-	if err != nil {
-		return nil, err
-	}
-	peerMap := make(map[string]api.Node)
-	for _, p := range peers {
-		peerMap[p.ID] = p
+	var peerMap = make(map[string]api.Node)
+	d.lock.RLock()
+	defer d.lock.RUnlock()
+	for k, v := range d.knownPeers {
+		peerMap[k] = v.node
 	}
 	return peerMap, nil
 }
@@ -199,17 +270,7 @@ func (d *DiscoveryManager) UpdateHandler(onUpdate core.UpdateHandlerFunc) {
 }
 
 func (d *DiscoveryManager) Serve(ctx context.Context) error {
-	go d.listenForMeshEvents()
-	go d.listenForPeerUpdates()
-	if d.MDNSEnabled {
-		go func() {
-			time.Sleep(time.Second * 1) // stall to make sure we fail initial proxy bootstrap
-			err := EnableMDNS(d.h)
-			if err != nil {
-				log.Warnf("MDNS Failed to start %v\n", err)
-			}
-		}()
-	}
+	go d.listenForPeerUpdatesEx()
 
 	<-ctx.Done()
 	return nil
@@ -217,9 +278,11 @@ func (d *DiscoveryManager) Serve(ctx context.Context) error {
 
 func NewDiscoveryManager(a *api.MeshClient, h host.Host, node core.PeerNode, MDNSEnabled bool) *DiscoveryManager {
 	return &DiscoveryManager{
-		admin:       a,
-		h:           h,
-		node:        node,
-		MDNSEnabled: MDNSEnabled,
+		ctrl:            a,
+		h:               h,
+		node:            node,
+		MDNSEnabled:     MDNSEnabled,
+		discoveryEvents: make(chan peerEvent, 64),
+		knownPeers:      make(map[string]peerStatus),
 	}
 }

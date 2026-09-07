@@ -74,6 +74,7 @@ func (r *ModelRoute) AddPeer(peer core.PeerNode) {
 
 func (r *ModelRoute) RemovePeer(peer core.PeerNode) {
 	delete(r.peers, peer.ID)
+
 }
 
 func (r *ModelRoute) IsAvailable() bool {

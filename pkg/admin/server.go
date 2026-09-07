@@ -140,6 +140,8 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) Listen() error {
+	// expire old nodes
+
 	return s.Serve(context.Background())
 }
 
@@ -160,6 +162,10 @@ func (s *Server) Serve(ctx context.Context) error {
 			return
 		}
 		errCh <- nil
+	}()
+
+	go func() {
+		s.runExpireNodes(ctx)
 	}()
 
 	select {

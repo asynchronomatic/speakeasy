@@ -9,6 +9,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
 type ExportedModel struct {
@@ -74,6 +75,7 @@ func (r *Registration) Refresh() (bool, uint64, error) {
 	// refreshes the node
 	err := r.transport.Post(fmt.Sprintf("/api/v1/nodes/%s", r.node.ID), &req, &resp)
 	if err != nil {
+		log.Errorf("failed to refresh node:  %v %v", req, err)
 		if strings.Contains(err.Error(), "409") {
 			return false, 0, nil
 		}

@@ -203,7 +203,6 @@ func (e *ModelRouter) AddPeerModels(node core.PeerNode, models map[string]ModelR
 	defer e.lock.Unlock()
 
 	for name := range models {
-
 		route, ok := e.MeshModels[node.ID]
 		if !ok {
 			log.Debugf("adding peer model %s: %+v", name, models[name])
@@ -219,8 +218,11 @@ func (e *ModelRouter) RemovePeer(node core.PeerNode) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	for _, model := range e.MeshModels {
+	for k, model := range e.MeshModels {
 		model.RemovePeer(node)
+		if !model.IsAvailable() {
+			delete(e.MeshModels, k)
+		}
 	}
 }
 

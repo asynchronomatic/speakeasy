@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -16,6 +17,8 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
+
+var SessionTokenTTL = time.Duration(10 * time.Minute)
 
 func newNodeToken() string {
 	b := make([]byte, 16)
@@ -97,15 +100,18 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 
 	updateNode := func(req *api.RegisterNodeRequest) bool {
 		if req.Token == "" {
+			log.Errorf("node token is required")
 			return false
 		}
 
 		ref, ok := s.nodes[id]
 		if !ok {
+			log.Errorf("node not found %s", id)
 			return false
 		}
 
 		if ref.Token != req.Token {
+			log.Errorf("token mismatch %s %s", ref.Token, req.Token)
 			return false
 		}
 		ref.LastPing = time.Now()
@@ -214,6 +220,24 @@ func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error
 	return &auth.Properties{User: claims.NodeID, Group: "mesh"}, nil
 }
 
+func (s *Server) refreshSessionToken(token string) (string, int64, error) {
+	if !strings.HasPrefix(token, auth.SessionTokenPrefix) {
+		return "", 0, errors.New("not a session token")
+	}
+	var claims sessionClaims
+	payload := strings.TrimPrefix(token, auth.SessionTokenPrefix)
+	if err := magiclink.New(s.magicKey).Decrypt(payload, &claims); err != nil {
+		return "", 0, err
+	}
+	if claims.NodeID == "" {
+		return "", 0, errors.New("invalid session")
+	}
+	if claims.Expires != 0 && time.Now().Unix() >= claims.Expires {
+		return "", 0, errors.New("session expired")
+	}
+	return s.issueSessionToken(claims.NodeID, SessionTokenTTL)
+}
+
 func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 	var req api.NodeLoginRequest
 	if err := ctx.GetObject(&req); err != nil {
@@ -238,7 +262,7 @@ func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 		return api.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 
-	// FIXME:  the session never expires but thats just bad, we should expire the session by requiring the
+	// FIXME:  the session never expires but that's just bad, we should expire the session by requiring the
 	//         the client to once in a while use the mesh key to get a new one by doing another login
 	token, expires, err := s.issueSessionToken(req.NodeID, 0) // never expires for now, but we should fix this
 	if err != nil {
@@ -250,4 +274,29 @@ func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 		NodeID:  req.NodeID,
 		Expires: expires,
 	})
+}
+
+// nodeExpiryCheckInterval defines the interval for checking and expiring stale node registrations.
+const nodeExpiryCheckInterval = 1 * time.Minute
+
+// nodeExpiry defines the duration after which a node is considered stale and eligible for expiration.
+const nodeExpiry = 1 * time.Minute
+
+func (s *Server) runExpireNodes(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(nodeExpiryCheckInterval):
+			now := time.Now()
+			s.lock.Lock()
+			for k, v := range s.nodes {
+				if now.Sub(v.LastPing) > nodeExpiry {
+					log.WithName("admin").Infof("expiring stale registration for node %s", k)
+					delete(s.nodes, k)
+				}
+			}
+			s.lock.Unlock()
+		}
+	}
 }

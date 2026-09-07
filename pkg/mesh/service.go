@@ -42,16 +42,14 @@ const (
 )
 
 type Service struct {
-	node core.PeerNode
-
+	node      core.PeerNode
 	h         host.Host
 	res       *client.Reservation
 	relayInfo []peer.AddrInfo
-	admin     *api.MeshClient
+	ctrl      *api.MeshClient // mesh control api
 	peers     map[string]peer.ID
 	handler   http.HandlerFunc
 	config    *core.MeshConfig
-
 	discovery *DiscoveryManager
 }
 
@@ -271,8 +269,9 @@ func (m *Service) GetPeerConnKind(id string) string {
 	return ""
 }
 
+// FIXME: thhis should get the info from discovery
 func (m *Service) GetPeerMap() (map[string]core.PeerNode, error) {
-	peers, err := m.admin.GetPeers()
+	peers, err := m.ctrl.GetPeers()
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +491,7 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 	m := &Service{
 		node:      node,
 		h:         host,
-		admin:     mesh,
+		ctrl:      mesh,
 		relayInfo: relayInfo,
 		peers:     make(map[string]peer.ID),
 		handler: func(w http.ResponseWriter, r *http.Request) {
