@@ -313,43 +313,12 @@ input:focus, .select-input:focus {
   margin-left: auto;
 }
 
-.theme-switch {
-  display: inline-flex;
-  margin-left: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--bg-elevated);
+.settings-theme-field {
+  max-width: 280px;
 }
 
-.theme-opt {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 5px 8px;
-  cursor: pointer;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.theme-opt + .theme-opt {
-  border-left: 1px solid var(--border);
-}
-
-.theme-opt:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-.theme-opt.is-active {
-  color: var(--on-accent);
-  background: var(--accent);
+.settings-theme-field .select-input {
+  width: 100%;
 }
 
 .conn-status {
@@ -2084,10 +2053,6 @@ html[data-theme="deco"] .data-table th {
   color: var(--accent);
 }
 
-html[data-theme="deco"] .theme-switch {
-  border-color: var(--accent);
-}
-
 html[data-theme="cyber"] {
   --bg: #06070c;
   --bg-elevated: #0c1018;
@@ -2200,11 +2165,198 @@ html[data-theme="cyber"] .data-table th {
   color: #00e5ff;
 }
 
-html[data-theme="cyber"] .theme-switch {
-  border-color: var(--accent);
+html[data-theme="clean"] {
+  color-scheme: light;
+  --bg: #f3f4f6;
+  --bg-elevated: #fafbfc;
+  --bg-panel: #ffffff;
+  --bg-hover: #eef0f3;
+  --bg-input: #f7f8fa;
+  --border: #e2e5ea;
+  --border-subtle: #eceef1;
+  --text: #1c1d1f;
+  --text-muted: #5f6772;
+  --text-dim: #8b939e;
+  --accent: #006fff;
+  --accent-soft: rgba(0, 111, 255, 0.08);
+  --accent-hover: #0058d6;
+  --on-accent: #ffffff;
+  --success: #12b981;
+  --success-soft: rgba(18, 185, 129, 0.12);
+  --warn: #f5a524;
+  --warn-soft: rgba(245, 165, 36, 0.14);
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.12);
+  --danger-hover: #c9373c;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --font: "Inter", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --glow: transparent;
+  --link-direct: #12b981;
+  --link-relay: #006fff;
+  --ring: #c5cad3;
+  --wash-1: rgba(0, 111, 255, 0.04);
+  --wash-2: rgba(18, 185, 129, 0.03);
 }
 
-html[data-theme="cyber"] .theme-opt {
-  letter-spacing: 0.06em;
-  padding: 5px 8px;
+html[data-theme="clean"] body {
+  background-image: none;
+  background-color: var(--bg);
+}
+
+html[data-theme="clean"] .topbar {
+  background: #ffffff;
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+html[data-theme="clean"] .brand-name {
+  color: var(--text);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+html[data-theme="clean"] .brand-sub {
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+html[data-theme="clean"] .logo-mark {
+  background: var(--bg);
+  border-color: var(--border);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+html[data-theme="clean"] .logo-lines {
+  stroke: var(--accent);
+}
+
+html[data-theme="clean"] .app-sidebar {
+  background: #f7f8fa;
+  border-right: 1px solid var(--border);
+}
+
+html[data-theme="clean"] .sidebar-item {
+  color: #3d434c;
+  border-radius: 8px;
+}
+
+html[data-theme="clean"] .sidebar-item:hover {
+  background: #eceef2;
+  color: var(--text);
+}
+
+html[data-theme="clean"] .sidebar-item.is-active {
+  background: #e8eaee;
+  color: var(--accent);
+  box-shadow: none;
+}
+
+html[data-theme="clean"] .sidebar-sep {
+  background: var(--border);
+}
+
+html[data-theme="clean"] .page-header h2,
+html[data-theme="clean"] .welcome-card h3,
+html[data-theme="clean"] .admin-section-header h3,
+html[data-theme="clean"] .modal-header h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  text-transform: none;
+  font-weight: 650;
+}
+
+html[data-theme="clean"] .welcome-card,
+html[data-theme="clean"] .table-wrap,
+html[data-theme="clean"] .panel,
+html[data-theme="clean"] .node-detail {
+  box-shadow: var(--shadow);
+}
+
+html[data-theme="clean"] .welcome-card::before {
+  display: none;
+}
+
+html[data-theme="clean"] input[type="text"],
+html[data-theme="clean"] input[type="password"],
+html[data-theme="clean"] input[type="search"],
+html[data-theme="clean"] .select-input,
+html[data-theme="clean"] .search-input {
+  background: #ffffff;
+  border-color: #d5d9e0;
+}
+
+html[data-theme="clean"] .data-table th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #3a3f47;
+  background: #ffffff;
+}
+
+html[data-theme="clean"] .data-table tbody tr:hover {
+  background: #f6f7f9;
+}
+
+html[data-theme="clean"] .node-detail-section,
+html[data-theme="clean"] .node-expand-section h4,
+html[data-theme="clean"] .endpoint-item .label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+html[data-theme="clean"] .modal-backdrop {
+  background: rgba(16, 24, 40, 0.32);
+  backdrop-filter: blur(2px);
+}
+
+html[data-theme="clean"] .modal-card {
+  border-color: var(--border);
+  box-shadow: 0 16px 48px rgba(16, 24, 40, 0.14);
+}
+
+html[data-theme="clean"] .badge-offline {
+  background: #eef0f3;
+  color: var(--text-muted);
+}
+
+html[data-theme="clean"] .conn-status {
+  background: var(--bg);
+}
+
+html[data-theme="clean"] .conn-status.online .status-dot,
+html[data-theme="clean"] .conn-status.offline .status-dot,
+html[data-theme="clean"] .swatch-self,
+html[data-theme="clean"] .mesh-link-direct,
+html[data-theme="clean"] .mesh-link-relay,
+html[data-theme="clean"] .mesh-link-limited,
+html[data-theme="clean"] .mesh-node.is-self .mesh-node-dot,
+html[data-theme="clean"] .mesh-graph.has-selection .mesh-node.is-selected .mesh-node-dot {
+  box-shadow: none;
+  filter: none;
+}
+
+html[data-theme="clean"] .mesh-canvas {
+  background: #fafbfc;
+}
+
+html[data-theme="clean"] .chat-msg-user .chat-bubble {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+html[data-theme="clean"] .chat-composer {
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+html[data-theme="clean"] .btn-danger:hover:not(:disabled) {
+  background: rgba(229, 72, 77, 0.18);
 }

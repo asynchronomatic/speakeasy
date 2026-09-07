@@ -67,6 +67,8 @@
     welcomeChat: document.getElementById("welcome-chat-url"),
     welcomeCurl: document.getElementById("welcome-curl"),
     welcomeLocalNote: document.getElementById("welcome-local-note"),
+    themeSelect: document.getElementById("theme-select"),
+    themeError: document.getElementById("theme-error"),
     navAdmin: document.getElementById("nav-admin"),
     adminCount: document.getElementById("admin-count"),
     adminLocked: document.getElementById("admin-locked"),
@@ -96,7 +98,7 @@
     el.statusLabel.textContent = label;
   }
 
-  const THEMES = ["night", "deco", "cyber"];
+  const THEMES = ["night", "deco", "cyber", "clean"];
 
   function normalizeTheme(name) {
     return THEMES.includes(name) ? name : "deco";
@@ -112,11 +114,29 @@
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch (_) {}
-    document.querySelectorAll(".theme-opt").forEach((btn) => {
-      const on = btn.getAttribute("data-theme") === theme;
-      btn.classList.toggle("is-active", on);
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-    });
+    if (el.themeSelect && el.themeSelect.value !== theme) {
+      el.themeSelect.value = theme;
+    }
+  }
+
+  async function saveTheme(name) {
+    const theme = normalizeTheme(name);
+    applyTheme(theme);
+    setErrorEl(el.themeError, "");
+    try {
+      await sendJSON("/api/mesh/theme", "POST", { theme });
+    } catch (err) {
+      setErrorEl(el.themeError, err.message || String(err));
+    }
+  }
+
+  async function loadTheme() {
+    try {
+      const data = await getJSON("/api/mesh/theme");
+      applyTheme(data.theme || data.Theme);
+    } catch (_) {
+      applyTheme(currentTheme());
+    }
   }
 
   async function getJSON(path) {
@@ -1705,10 +1725,11 @@
     setStatus("loading", "Refreshing");
     refresh();
   });
-  document.querySelectorAll(".theme-opt").forEach((btn) => {
-    btn.addEventListener("click", () => applyTheme(btn.getAttribute("data-theme")));
-  });
+  if (el.themeSelect) {
+    el.themeSelect.addEventListener("change", () => saveTheme(el.themeSelect.value));
+  }
   applyTheme(currentTheme());
+  loadTheme();
   if (el.adminEnableForm) {
     el.adminEnableForm.addEventListener("submit", enableAdmin);
   }

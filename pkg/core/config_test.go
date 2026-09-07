@@ -62,3 +62,52 @@ providers:
 		t.Fatalf("saved providers %+v", again.Providers)
 	}
 }
+
+func TestNormalizeTheme(t *testing.T) {
+	cases := map[string]string{
+		"":      DefaultTheme,
+		"  ":    DefaultTheme,
+		"nope":  DefaultTheme,
+		"Deco":  "deco",
+		"clean": "clean",
+		"NIGHT": "night",
+		"cyber": "cyber",
+	}
+	for in, want := range cases {
+		if got := NormalizeTheme(in); got != want {
+			t.Fatalf("NormalizeTheme(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestLoadConfigDefaultsTheme(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	src := []byte(`proxy:
+  listen: ":9"
+mesh:
+  address: http://example
+`)
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxy.Theme != DefaultTheme {
+		t.Fatalf("default theme %q want %q", cfg.Proxy.Theme, DefaultTheme)
+	}
+
+	cfg.Proxy.Theme = "clean"
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	again, err := LoadConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Proxy.Theme != "clean" || again.Proxy.Listen != ":9" {
+		t.Fatalf("saved theme %+v", again.Proxy)
+	}
+}

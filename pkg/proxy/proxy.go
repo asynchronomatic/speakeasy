@@ -294,6 +294,9 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
 	p.mux.HandleFunc("GET /api/mesh/config", p.uiConfigHandler)
 
+	p.mux.HandleFunc("GET /api/mesh/theme", p.handle(p.themeGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/theme", p.handle(p.themeSetHandler))
+
 	p.mux.HandleFunc("GET /api/mesh/providers", p.handle(p.providersListHandler))
 	p.mux.HandleFunc("POST /api/mesh/providers", p.handle(p.providerAddHandler))
 	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.handle(p.providerUpdateHandler))

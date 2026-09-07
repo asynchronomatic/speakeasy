@@ -2,6 +2,7 @@ package core
 
 import (
 	"os"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 
@@ -11,6 +12,20 @@ import (
 var DefaultRelayPort = 4001
 var DefaultAdminPort = 4002
 var DefaultProxyListen = ":4080"
+
+const DefaultTheme = "deco"
+
+var AllowedThemes = []string{"night", "deco", "cyber", "clean"}
+
+func NormalizeTheme(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	for _, t := range AllowedThemes {
+		if n == t {
+			return t
+		}
+	}
+	return DefaultTheme
+}
 
 type ModelConfig struct {
 	Model        string   `yaml:"model" json:"model"`
@@ -62,6 +77,7 @@ type MeshConfig struct {
 type Config struct {
 	Proxy struct {
 		Listen string `yaml:"listen"`
+		Theme  string `yaml:"theme,omitempty" json:"theme"`
 	} `yaml:"proxy"`
 	Admin     AdminConfig `yaml:"admin"`
 	Mesh      MeshConfig  `yaml:"mesh"`
@@ -84,6 +100,7 @@ func applyConfigDefaults(config *Config) {
 	if config.Mesh.Name == "" {
 		config.Mesh.Name, _ = os.Hostname()
 	}
+	config.Proxy.Theme = NormalizeTheme(config.Proxy.Theme)
 }
 
 func LoadConfigFile() (*Config, error) {
