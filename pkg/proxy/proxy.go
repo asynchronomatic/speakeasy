@@ -90,7 +90,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 
 	route := p.modelRouter.GetModelRoute(model)
 	if route == nil {
-		http.Error(w, "model not found", http.StatusNotFound)
+		writeModelNotFound(w, r, model)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 
 		u, err := url.Parse(local.BaseURL)
 		if err != nil {
-			http.Error(w, "model not found", http.StatusNotFound)
+			writeModelNotFound(w, r, model)
 			return
 		}
 
@@ -123,14 +123,14 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 	// we could loop forever
 	if noRelay {
 		log.Debugf(" -- No relay set, returning 404")
-		http.Error(w, "model not found", http.StatusNotFound)
+		writeModelNotFound(w, r, model)
 		return
 	}
 
 	destNode := route.GetMeshPeerRoute()
 	if destNode == nil {
 		log.Debugf(" -- No model available, returning 404")
-		http.Error(w, "no model available", http.StatusNotFound)
+		writeModelNotFound(w, r, model)
 		return
 	}
 
