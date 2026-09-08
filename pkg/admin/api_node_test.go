@@ -41,8 +41,13 @@ func TestApiNodeLogin(t *testing.T) {
 	if !strings.HasPrefix(login.Token, auth.SessionTokenPrefix) {
 		t.Fatalf("token prefix: %q", login.Token)
 	}
-	if login.Expires != 0 {
-		t.Fatalf("expected no expiry, got %d", login.Expires)
+	now := time.Now().Unix()
+	if login.Expires <= now {
+		t.Fatalf("expected future expiry, got %d", login.Expires)
+	}
+	maxExp := time.Now().Add(SessionTokenTTL + time.Second).Unix()
+	if login.Expires > maxExp {
+		t.Fatalf("expiry %d beyond TTL (max %d)", login.Expires, maxExp)
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
@@ -62,6 +67,120 @@ func TestApiNodeLogin(t *testing.T) {
 	}
 	if props.User != "peer-login-1" || props.Group != MeshGroup {
 		t.Fatalf("session props %+v", props)
+	}
+}
+
+func TestImmortalSessionRejected(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	if _, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-immortal", Name: "n1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	claims := sessionClaims{NodeID: "peer-immortal", Expires: 0}
+	raw, err := magiclink.New(s.magicKey).Encrypt(&claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := auth.SessionTokenPrefix + raw
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("immortal session: got %d want 401", res.StatusCode)
+	}
+}
+
+func TestSessionRejectedAfterACLRemove(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})
+	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-acl-1", Name: "n1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-acl-1",
+		MeshId:     "default",
+		MeshSecret: join.MeshSecret,
+	})
+	var login api.NodeLoginResponse
+	if err := json.NewDecoder(res.Body).Decode(&login); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+
+	s.acl.Remove("peer-acl-1")
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	req.Header.Set("Authorization", "Bearer "+login.Token)
+	authRes, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authRes.Body.Close()
+	if authRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("kicked session: got %d want 401", authRes.StatusCode)
+	}
+
+	authz := postJSON(t, ts, http.MethodPost, "/api/v1/authorize", login.Token, api.RegisterNodeRequest{
+		Node: api.Node{ID: "peer-acl-1", Name: "n1"},
+	})
+	authz.Body.Close()
+	if authz.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("kicked authorize: got %d want 401", authz.StatusCode)
+	}
+}
+
+func TestSessionRejectedAfterKick(t *testing.T) {
+	_, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})
+	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-kick-session", Name: "n1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-kick-session",
+		MeshSecret: join.MeshSecret,
+	})
+	var login api.NodeLoginResponse
+	if err := json.NewDecoder(res.Body).Decode(&login); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+
+	kick := postJSON(t, ts, http.MethodDelete, "/api/v1/admin/nodes/peer-kick-session", "test-secret", nil)
+	kick.Body.Close()
+	if kick.StatusCode != http.StatusOK {
+		t.Fatalf("kick: got %d", kick.StatusCode)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	req.Header.Set("Authorization", "Bearer "+login.Token)
+	authRes, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authRes.Body.Close()
+	if authRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("session after kick: got %d want 401", authRes.StatusCode)
+	}
+
+	relogin := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-kick-session",
+		MeshSecret: join.MeshSecret,
+	})
+	relogin.Body.Close()
+	if relogin.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("login after kick: got %d want 401", relogin.StatusCode)
 	}
 }
 

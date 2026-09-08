@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama/ollama/api"
@@ -11,6 +12,10 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
+
+// Re-login this far before the session expiry so a 10-minute token
+// is refreshed on the next controller poll instead of failing first.
+const sessionRefreshSkew = time.Minute
 
 type ExportedModel struct {
 	Name       string // Model Alias
@@ -54,10 +59,15 @@ type NodeLoginResponse struct {
 type MeshClient struct {
 	meshId    string
 	transport jsonclient.Transport
+
+	mu      sync.Mutex
+	nodeID  string
+	secret  string
+	expires int64
 }
 
 type Registration struct {
-	transport  jsonclient.Transport
+	client     *MeshClient
 	node       Node
 	instanceID string // unique id of this registration instance
 }
@@ -65,6 +75,9 @@ type Registration struct {
 type RegisterNodeResponse = RegisterNodeRequest
 
 func (r *Registration) Refresh() (bool, uint64, error) {
+	if err := r.client.ensureSession(); err != nil {
+		return false, 0, err
+	}
 	req := RegisterNodeRequest{
 		Node:       r.node,
 		InstanceID: r.instanceID,
@@ -73,7 +86,7 @@ func (r *Registration) Refresh() (bool, uint64, error) {
 	resp := RegisterNodeResponse{}
 
 	// refreshes the node
-	err := r.transport.Post(fmt.Sprintf("/api/v1/nodes/%s", r.node.ID), &req, &resp)
+	err := r.client.transport.Post(fmt.Sprintf("/api/v1/nodes/%s", r.node.ID), &req, &resp)
 	if err != nil {
 		log.Errorf("failed to refresh node:  %v %v", req, err)
 		if strings.Contains(err.Error(), "409") {
@@ -87,6 +100,9 @@ func (r *Registration) Refresh() (bool, uint64, error) {
 
 // GetPeers returns a list of currently configured peers for our mesh
 func (c *MeshClient) GetPeers() ([]Node, error) {
+	if err := c.ensureSession(); err != nil {
+		return nil, err
+	}
 	resp := ListNodesResponse{}
 
 	err := c.transport.Get("/api/v1/nodes", &resp)
@@ -99,6 +115,9 @@ func (c *MeshClient) GetPeers() ([]Node, error) {
 
 // GetRelay returns the p2p relay address for our mesh along with the last modified timestamp
 func (c *MeshClient) GetRelay() ([]string, time.Time, uint64, error) {
+	if err := c.ensureSession(); err != nil {
+		return nil, time.Time{}, 0, err
+	}
 	resp := GetRelayResponse{}
 
 	err := c.transport.Get("/api/v1/relay", &resp)
@@ -117,37 +136,58 @@ func (c *MeshClient) GetAddress() ([]string, error) {
 
 // Login this client for access to the mesh
 func (c *MeshClient) Login(nodeID, meshSecret string) error {
+	c.mu.Lock()
+	c.nodeID = nodeID
+	c.secret = meshSecret
+	c.mu.Unlock()
+	return c.login()
+}
+
+func (c *MeshClient) login() error {
+	c.mu.Lock()
 	req := NodeLoginRequest{
-		NodeID:     nodeID,
+		NodeID:     c.nodeID,
 		MeshId:     c.meshId,
-		MeshSecret: meshSecret,
+		MeshSecret: c.secret,
 	}
+	c.mu.Unlock()
+
 	resp := NodeLoginResponse{}
 	if err := c.transport.Post("/api/v1/login", &req, &resp); err != nil {
 		return err
 	}
 
-	//
+	c.mu.Lock()
 	c.transport.SetToken(resp.Token)
+	c.expires = resp.Expires
+	c.mu.Unlock()
 	return nil
 }
 
-/*
-func (c *MeshClient) Authorize(id string) error {
-	req := RegisterNodeRequest{
-		Node: Node{
-			ID: id,
-		},
+func (c *MeshClient) ensureSession() error {
+	c.mu.Lock()
+	nodeID, secret, expires := c.nodeID, c.secret, c.expires
+	c.mu.Unlock()
+	if nodeID == "" || secret == "" {
+		return nil
 	}
-	var resp Node
-	return c.transport.Post("/api/v1/authorize", &req, &resp)
-}*/
+	if expires != 0 && time.Now().Add(sessionRefreshSkew).Unix() < expires {
+		return nil
+	}
+	return c.login()
+}
 
 func (c *MeshClient) Unregister(id string) error {
+	if err := c.ensureSession(); err != nil {
+		return err
+	}
 	return c.transport.Delete(fmt.Sprintf("/api/v1/nodes/%s", id))
 }
 
 func (c *MeshClient) Register(name string, id string) (*Registration, error) {
+	if err := c.ensureSession(); err != nil {
+		return nil, err
+	}
 	req := RegisterNodeRequest{
 		Node: Node{
 			Name: name,
@@ -161,7 +201,7 @@ func (c *MeshClient) Register(name string, id string) (*Registration, error) {
 		return nil, err
 	}
 	return &Registration{
-		transport:  c.transport,
+		client:     c,
 		node:       resp.Node,
 		instanceID: resp.InstanceID,
 	}, nil

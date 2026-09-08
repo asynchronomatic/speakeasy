@@ -68,7 +68,6 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/login", s.handle(s.apiNodeLogin))
 
 	mux.HandleFunc("GET /api/v1/relay", s.authenticated(s.apiRelayGet))
-	mux.HandleFunc("POST /api/v1/authorize", s.authenticated(s.apiNodeAuthorize))
 	mux.HandleFunc("POST /api/v1/nodes", s.authenticated(s.apiNodeRegister))
 	mux.HandleFunc("DELETE /api/v1/nodes/{id}", s.authenticated(s.apiNodeUnregister))
 	mux.HandleFunc("POST /api/v1/nodes/{id}", s.authenticated(s.apiNodeRefresh))
