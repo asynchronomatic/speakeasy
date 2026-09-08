@@ -110,7 +110,7 @@ providers:
 
 A single proxy can front more than one Ollama process: add another `providers` item with its own `id` and `base_url`. Models from every provider are merged into this node’s advertised set.
 
-`allow.list` (optional, admin working directory) is extra peer IDs, one per line.
+`allow.list` (optional, same directory as the admin DB, or `ADMIN_ALLOW_PATH`) is extra peer IDs, one per line.
 
 Do not commit a live `admin_secret`. Examples live under `examples/`.
 

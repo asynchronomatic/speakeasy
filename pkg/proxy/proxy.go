@@ -100,7 +100,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	// Always try local routes first
 	local := route.GetLocalRouteProtected(isFromMesh)
 	if local != nil {
-		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model, r.URL.Path)
+		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model)
 
 		u, err := url.Parse(local.BaseURL)
 		if err != nil {

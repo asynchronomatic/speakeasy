@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -188,6 +189,13 @@ func adminDBPath() string {
 	return "admin.jkv"
 }
 
+func adminAllowPath() string {
+	if p := strings.TrimSpace(os.Getenv("ADMIN_ALLOW_PATH")); p != "" {
+		return p
+	}
+	return filepath.Join(filepath.Dir(adminDBPath()), "allow.list")
+}
+
 func (s *Server) WithAdvertiseURL(url string) *Server {
 	s.advertiseURL = url
 	return s
@@ -201,7 +209,10 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 		return nil, err
 	}
 
-	acl, _ := NewAllowList("allow.list")
+	acl, err := NewAllowList(adminAllowPath())
+	if err != nil {
+		return nil, err
+	}
 
 	kv, err := jsonkv.Open(adminDBPath())
 	if err != nil {
