@@ -277,6 +277,86 @@ func TestAdminRedeemInviteLink(t *testing.T) {
 	res.Body.Close()
 }
 
+func TestAdminRedeemRejectsExistingNode(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest", Reusable: true})
+
+	first := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
+		Node: api.Node{ID: "peer-taken", Name: "n1"},
+	})
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first redeem: got %d", first.StatusCode)
+	}
+	orig := decodeRedeem(t, first)
+
+	var rec meshNodeRecord
+	if err := s.kv.Get(meshNodeKVKey("default", "peer-taken"), &rec); err != nil {
+		t.Fatal(err)
+	}
+
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
+		Node: api.Node{ID: "peer-taken", Name: "attacker"},
+	})
+	res.Body.Close()
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("overwrite redeem: got %d want 409", res.StatusCode)
+	}
+
+	var after meshNodeRecord
+	if err := s.kv.Get(meshNodeKVKey("default", "peer-taken"), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.PasswordHash != rec.PasswordHash || after.Name != "n1" {
+		t.Fatalf("credentials changed: %+v -> %+v", rec, after)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(after.PasswordHash), []byte(orig.MeshSecret)); err != nil {
+		t.Fatal("original mesh secret no longer valid")
+	}
+
+	login := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-taken",
+		MeshSecret: orig.MeshSecret,
+	})
+	login.Body.Close()
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login with original secret: got %d", login.StatusCode)
+	}
+}
+
+func TestAdminRedeemConflictDoesNotConsumeInvite(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+	taken := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+taken.InviteId, "", api.RedeemInviteRequest{
+		Node: api.Node{ID: "peer-exists", Name: "n1"},
+	})
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("seed redeem: got %d", res.StatusCode)
+	}
+
+	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: false})
+	conflict := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+fresh.InviteId, "", api.RedeemInviteRequest{
+		Node: api.Node{ID: "peer-exists", Name: "n2"},
+	})
+	conflict.Body.Close()
+	if conflict.StatusCode != http.StatusConflict {
+		t.Fatalf("conflict: got %d want 409", conflict.StatusCode)
+	}
+
+	var stored inviteSecret
+	if err := s.kv.Get(inviteKVKey("default", fresh.InviteId), &stored); err != nil {
+		t.Fatalf("one-time invite consumed on conflict: %v", err)
+	}
+
+	ok := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+fresh.InviteId, "", api.RedeemInviteRequest{
+		Node: api.Node{ID: "peer-new", Name: "n2"},
+	})
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("redeem unused id: got %d", ok.StatusCode)
+	}
+}
+
 func TestAdminRedeemOneTimeInvite(t *testing.T) {
 	s, ts := newAdminTestServer(t)
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: false})

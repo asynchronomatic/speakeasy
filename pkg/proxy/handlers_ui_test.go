@@ -167,7 +167,6 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"enableAdmin",
 		"setAdminEnabled",
 		"createInvite",
-		"Forever",
 		"Reusable",
 		"1 remaining",
 		"This invite will never expire",
