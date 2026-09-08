@@ -78,7 +78,7 @@ func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
 		}()
 
 		if err := api.RequireSameOrigin(r); err != nil {
-			rejectSameOrigin(w, err)
+			api.RejectSameOrigin(w, err)
 			return
 		}
 
@@ -93,14 +93,6 @@ func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
 	}
 }
 
-func rejectSameOrigin(w http.ResponseWriter, err error) {
-	if ce, ok := err.(*api.Error); ok {
-		http.Error(w, ce.Message(), ce.Code())
-		return
-	}
-	http.Error(w, err.Error(), http.StatusForbidden)
-}
-
 func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -109,7 +101,7 @@ func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
 		}()
 
 		if err := api.RequireSameOrigin(r); err != nil {
-			rejectSameOrigin(w, err)
+			api.RejectSameOrigin(w, err)
 			return
 		}
 

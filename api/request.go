@@ -36,6 +36,28 @@ func RequireJSONContentType(r *http.Request) error {
 	return nil
 }
 
+// OriginOK reports whether r is same-origin. A missing Origin is allowed
+// (CLI and tests). Unlike RequireSameOrigin this applies to GET as well,
+// which is required for WebSocket upgrades.
+func OriginOK(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := r.Host
+	if host == "" {
+		host = r.URL.Host
+	}
+	return host != "" && strings.EqualFold(u.Host, host)
+}
+
 // RequireSameOrigin rejects unsafe methods that carry a browser Origin which
 // does not match the request Host. Requests with no Origin (CLI, jsonclient)
 // are allowed. X-Forwarded-Host is ignored so clients cannot spoof it.
@@ -47,16 +69,20 @@ func RequireSameOrigin(r *http.Request) error {
 	if origin == "" {
 		return nil
 	}
+	if OriginOK(r) {
+		return nil
+	}
 	u, err := url.Parse(origin)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return NewError(http.StatusForbidden, "invalid origin")
 	}
-	host := r.Host
-	if host == "" {
-		host = r.URL.Host
+	return NewError(http.StatusForbidden, "origin mismatch")
+}
+
+func RejectSameOrigin(w http.ResponseWriter, err error) {
+	if ce, ok := err.(*Error); ok {
+		http.Error(w, ce.Message(), ce.Code())
+		return
 	}
-	if host == "" || !strings.EqualFold(u.Host, host) {
-		return NewError(http.StatusForbidden, "origin mismatch")
-	}
-	return nil
+	http.Error(w, err.Error(), http.StatusForbidden)
 }

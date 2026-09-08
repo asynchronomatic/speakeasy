@@ -78,3 +78,25 @@ func TestRequireSameOrigin(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestOriginOK(t *testing.T) {
+	t.Parallel()
+	same := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
+	same.Host = "127.0.0.1:4080"
+	same.Header.Set("Origin", "http://127.0.0.1:4080")
+	if !OriginOK(same) {
+		t.Fatal("same origin GET should be allowed")
+	}
+
+	none := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
+	if !OriginOK(none) {
+		t.Fatal("missing origin should be allowed")
+	}
+
+	cross := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
+	cross.Host = "127.0.0.1:4080"
+	cross.Header.Set("Origin", "http://evil.example")
+	if OriginOK(cross) {
+		t.Fatal("cross origin GET should be denied")
+	}
+}

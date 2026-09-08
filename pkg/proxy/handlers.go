@@ -48,6 +48,37 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 	}
 }
 
+func (p *Proxy) authenticated(fn func(*RPC) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		defer func() {
+			p.logRequest(r, "--", start)
+		}()
+
+		if err := api.RequireSameOrigin(r); err != nil {
+			api.RejectSameOrigin(w, err)
+			return
+		}
+
+		if p.auth != nil {
+			_, code := p.auth.DoAuth(w, r)
+			if code != http.StatusOK {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		ctx := &RPC{w: w, r: r}
+		if err := fn(ctx); err != nil {
+			if ce, ok := err.(*api.Error); ok {
+				ctx.Error(ce.Code(), ce.Message())
+			} else {
+				ctx.Error(http.StatusInternalServerError, err.Error())
+			}
+		}
+	}
+}
+
 func (p *Proxy) withAdmin(fn func(*RPC) error) func(*RPC) error {
 	return func(rpc *RPC) error {
 		if p.admin == nil {

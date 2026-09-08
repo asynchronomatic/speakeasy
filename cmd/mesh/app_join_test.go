@@ -38,6 +38,7 @@ func TestConfigFromInvite(t *testing.T) {
 func TestConfigFromInviteKeepsExisting(t *testing.T) {
 	existing := &core.Config{}
 	existing.Proxy.Listen = ":9999"
+	existing.Proxy.Password = "kept-pass"
 	existing.Admin.AdminPort = 4111
 	existing.Admin.Secret = "admin-secret"
 	existing.Mesh.Name = "kept-name"
@@ -61,8 +62,8 @@ func TestConfigFromInviteKeepsExisting(t *testing.T) {
 	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "new-secret" || cfg.Mesh.MeshId != "default" {
 		t.Fatalf("updated mesh %+v", cfg.Mesh)
 	}
-	if cfg.Proxy.Listen != ":9999" || cfg.Admin.AdminPort != 4111 || cfg.Admin.Secret != "admin-secret" {
-		t.Fatalf("kept settings proxy=%q admin=%+v", cfg.Proxy.Listen, cfg.Admin)
+	if cfg.Proxy.Listen != ":9999" || cfg.Proxy.Password != "kept-pass" || cfg.Admin.AdminPort != 4111 || cfg.Admin.Secret != "admin-secret" {
+		t.Fatalf("kept settings proxy=%+v admin=%+v", cfg.Proxy, cfg.Admin)
 	}
 	if cfg.Mesh.Name != "kept-name" || cfg.Mesh.MDNSEnabled || !cfg.Mesh.ForcePrivate || cfg.Mesh.Port != 1234 {
 		t.Fatalf("kept mesh extras %+v", cfg.Mesh)
@@ -96,6 +97,9 @@ func TestRunJoin(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
+	askProxyPassword = func() (string, error) { return "join-pass", nil }
+	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+
 	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +118,9 @@ func TestRunJoin(t *testing.T) {
 	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
 		t.Fatalf("loaded mesh %+v", cfg.Mesh)
 	}
+	if cfg.Proxy.Password != "join-pass" {
+		t.Fatalf("proxy password %q", cfg.Proxy.Password)
+	}
 }
 
 func TestRunJoinExistingConfig(t *testing.T) {
@@ -122,6 +129,7 @@ func TestRunJoinExistingConfig(t *testing.T) {
 
 	existing := &core.Config{}
 	existing.Proxy.Listen = ":7777"
+	existing.Proxy.Password = "keep-pass"
 	existing.Admin.Secret = "keep-admin"
 	existing.Mesh.Name = "box-1"
 	existing.Mesh.Address = "http://old:4002"
@@ -158,6 +166,12 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
+	askProxyPassword = func() (string, error) {
+		t.Fatal("should not prompt when proxy.password is set")
+		return "", nil
+	}
+	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+
 	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", existing); err != nil {
 		t.Fatal(err)
 	}
@@ -169,11 +183,67 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
 		t.Fatalf("updated mesh %+v", cfg.Mesh)
 	}
-	if cfg.Proxy.Listen != ":7777" || cfg.Admin.Secret != "keep-admin" || cfg.Mesh.Name != "box-1" || cfg.Mesh.MDNSEnabled {
+	if cfg.Proxy.Listen != ":7777" || cfg.Proxy.Password != "keep-pass" || cfg.Admin.Secret != "keep-admin" || cfg.Mesh.Name != "box-1" || cfg.Mesh.MDNSEnabled {
 		t.Fatalf("kept settings %+v", cfg)
 	}
 	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "custom" {
 		t.Fatalf("providers %+v", cfg.Providers)
+	}
+}
+
+func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	existing := &core.Config{}
+	existing.Proxy.Listen = ":7777"
+	existing.Mesh.Name = "box-1"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.RedeemInviteResponse{
+			MeshId:     "default",
+			MeshSecret: "join-secret",
+			MeshServer: "http://10.0.0.30:4002",
+		})
+	}))
+	t.Cleanup(ts.Close)
+
+	asked := false
+	askProxyPassword = func() (string, error) {
+		asked = true
+		return "new-pass", nil
+	}
+	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+
+	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", existing); err != nil {
+		t.Fatal(err)
+	}
+	if !asked {
+		t.Fatal("expected password prompt")
+	}
+	cfg, err := core.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxy.Password != "new-pass" {
+		t.Fatalf("password %q", cfg.Proxy.Password)
+	}
+}
+
+func TestEnsureProxyPasswordSkipsWhenSet(t *testing.T) {
+	cfg := &core.Config{}
+	cfg.Proxy.Password = "already"
+	askProxyPassword = func() (string, error) {
+		t.Fatal("should not prompt")
+		return "", nil
+	}
+	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+	if err := ensureProxyPassword(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Proxy.Password != "already" {
+		t.Fatalf("password %q", cfg.Proxy.Password)
 	}
 }
 

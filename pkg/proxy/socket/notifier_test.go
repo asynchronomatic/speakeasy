@@ -10,15 +10,20 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestNotifierBroadcastWakeup(t *testing.T) {
+func startNotifier(t *testing.T) (*Notifier, *httptest.Server, string) {
+	t.Helper()
 	n := NewNotifier()
 	go n.Poll()
-
 	srv := httptest.NewServer(http.HandlerFunc(n.Handle))
 	t.Cleanup(srv.Close)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/"
+	return n, srv, wsURL
+}
 
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/"
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+func TestNotifierBroadcastWakeup(t *testing.T) {
+	n, srv, wsURL := startNotifier(t)
+	origin := srv.URL
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Origin": {origin}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,4 +43,35 @@ func TestNotifierBroadcastWakeup(t *testing.T) {
 		return
 	}
 	t.Fatal("timed out waiting for wakeup")
+}
+
+func TestNotifierRejectsCrossOrigin(t *testing.T) {
+	_, _, wsURL := startNotifier(t)
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, http.Header{"Origin": {"http://evil.example"}})
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected cross-origin upgrade to fail")
+	}
+	if resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %+v want 403", resp)
+	}
+}
+
+func TestNotifierRejectsCrossSiteFetch(t *testing.T) {
+	_, srv, wsURL := startNotifier(t)
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, http.Header{
+		"Origin":         {srv.URL},
+		"Sec-Fetch-Site": {"cross-site"},
+	})
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected cross-site upgrade to fail")
+	}
+	if resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %+v want 403", resp)
+	}
 }

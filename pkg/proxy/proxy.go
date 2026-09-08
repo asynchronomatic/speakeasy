@@ -23,6 +23,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
 
@@ -55,6 +56,7 @@ type Proxy struct {
 	mesh    core.MeshServiceProvider
 
 	admin *api.AdminClient
+	auth  *auth.TokenAuth
 	lock  sync.RWMutex
 
 	notifier    *socket.Notifier
@@ -260,6 +262,15 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 	p.admin = admin
 }
 
+func (p *Proxy) WithAuthToken(token string) {
+	if token != "" {
+
+		p.auth = auth.NewTokenAuth()
+		p.auth.AddToken(token, auth.AdminUser, auth.AdminGroup)
+		log.WithName("proxy").Warnf("Enabling Token Authentication (Token Configured)")
+	}
+}
+
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
 func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider) (*Proxy, error) {
@@ -291,28 +302,28 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
-	p.mux.HandleFunc("GET /api/mesh/models", p.uiModelsHandler)
-	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
-	p.mux.HandleFunc("GET /api/mesh/debug", p.handle(p.debugGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/debug", p.handle(p.debugSetHandler))
+	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(p.uiModelsHandler))
+	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(p.meshMembers))
+	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(p.debugGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(p.debugSetHandler))
 
-	p.mux.HandleFunc("GET /api/mesh/theme", p.handle(p.themeGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/theme", p.handle(p.themeSetHandler))
+	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(p.themeGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(p.themeSetHandler))
 
-	p.mux.HandleFunc("GET /api/mesh/providers", p.handle(p.providersListHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers", p.handle(p.providerAddHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.handle(p.providerUpdateHandler))
-	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.handle(p.providerDeleteHandler))
+	p.mux.HandleFunc("GET /api/mesh/providers", p.authenticated(p.providersListHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers", p.authenticated(p.providerAddHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.authenticated(p.providerUpdateHandler))
+	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.authenticated(p.providerDeleteHandler))
 
-	p.mux.HandleFunc("GET /api/admin/enabled", p.handle(p.adminEnabledHandler))
-	p.mux.HandleFunc("POST /api/admin/enabled", p.handle(p.adminEnableHandler))
+	p.mux.HandleFunc("GET /api/admin/enabled", p.authenticated(p.adminEnabledHandler))
+	p.mux.HandleFunc("POST /api/admin/enabled", p.authenticated(p.adminEnableHandler))
 
-	p.mux.HandleFunc("POST /api/admin/invite", p.handle(p.withAdmin(p.adminCreateInvitedHandler)))
-	p.mux.HandleFunc("GET /api/admin/invite", p.handle(p.withAdmin(p.adminListInvitesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.handle(p.withAdmin(p.adminRevokeInviteHandler)))
+	p.mux.HandleFunc("POST /api/admin/invite", p.authenticated(p.withAdmin(p.adminCreateInvitedHandler)))
+	p.mux.HandleFunc("GET /api/admin/invite", p.authenticated(p.withAdmin(p.adminListInvitesHandler)))
+	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.authenticated(p.withAdmin(p.adminRevokeInviteHandler)))
 
-	p.mux.HandleFunc("GET /api/admin/node", p.handle(p.withAdmin(p.adminListNodesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.handle(p.withAdmin(p.adminKickNodeHandler)))
+	p.mux.HandleFunc("GET /api/admin/node", p.authenticated(p.withAdmin(p.adminListNodesHandler)))
+	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.authenticated(p.withAdmin(p.adminKickNodeHandler)))
 
 	p.mux.HandleFunc("GET /{$}", p.uiRootHandler)
 	p.mux.HandleFunc("GET /ui", p.uiHandler)
