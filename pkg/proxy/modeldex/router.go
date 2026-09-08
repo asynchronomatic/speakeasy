@@ -73,6 +73,7 @@ func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]Mod
 	models := make(map[string]ModelRoute)
 
 	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
+		log.WithName("mdex").Errorf("failed to parse provider URL:%v")
 		return nil, err
 	}
 
