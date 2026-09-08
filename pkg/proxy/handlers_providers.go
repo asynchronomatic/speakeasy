@@ -55,6 +55,28 @@ func (p *Proxy) saveProvidersConfig(cfg *core.Config) error {
 	return nil
 }
 
+func providersWithoutTokens(src []core.Provider) []core.Provider {
+	out := make([]core.Provider, len(src))
+	copy(out, src)
+	for i := range out {
+		out[i].Token = ""
+	}
+	return out
+}
+
+func providerWithoutToken(prov core.Provider) core.Provider {
+	prov.Token = ""
+	return prov
+}
+
+func keepProviderToken(submitted, existing string) string {
+	submitted = strings.TrimSpace(submitted)
+	if submitted == "" || submitted == "*" {
+		return existing
+	}
+	return submitted
+}
+
 func (p *Proxy) providersListHandler(rpc *RPC) error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -62,7 +84,7 @@ func (p *Proxy) providersListHandler(rpc *RPC) error {
 	if err != nil {
 		return err
 	}
-	return rpc.ReplyObject(&providersListResponse{Providers: cfg.Providers})
+	return rpc.ReplyObject(&providersListResponse{Providers: providersWithoutTokens(cfg.Providers)})
 }
 
 func (p *Proxy) providerAddHandler(rpc *RPC) error {
@@ -88,7 +110,7 @@ func (p *Proxy) providerAddHandler(rpc *RPC) error {
 		return err
 	}
 	p.notifier.Broadcast() // notify ui of update
-	return rpc.ReplyObject(&prov)
+	return rpc.ReplyObject(providerWithoutToken(prov))
 }
 
 func (p *Proxy) providerUpdateHandler(rpc *RPC) error {
@@ -115,12 +137,13 @@ func (p *Proxy) providerUpdateHandler(rpc *RPC) error {
 	if i < 0 {
 		return api.NewError(http.StatusNotFound, "provider not found")
 	}
+	prov.Token = keepProviderToken(prov.Token, cfg.Providers[i].Token)
 	cfg.Providers[i] = prov
 	if err := p.saveProvidersConfig(cfg); err != nil {
 		return err
 	}
 	p.notifier.Broadcast() // notify ui of update
-	return rpc.ReplyObject(&prov)
+	return rpc.ReplyObject(providerWithoutToken(prov))
 }
 
 func (p *Proxy) providerDeleteHandler(rpc *RPC) error {

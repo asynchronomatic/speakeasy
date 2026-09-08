@@ -8,13 +8,8 @@ import (
 	"strings"
 )
 
-const SessionTokenPrefix = "mesh-"
-
-type SessionAuthFunc func(token string) (*Properties, bool)
-
 type TokenAuth struct {
-	tokens  map[string]TokenUser
-	session SessionAuthFunc
+	tokens map[string]TokenUser
 }
 
 type TokenUser struct {
@@ -28,39 +23,32 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
-	a.session = fn
-}
-
-func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
+func getToken(r *http.Request) string {
 	auth := r.Header.Get("Authorization")
 	const prefix = "bearer "
 	if len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix) {
 		token := strings.TrimSpace(auth[len(prefix):])
-
-		if strings.HasPrefix(token, SessionTokenPrefix) {
-			if a.session == nil {
-				return nil, http.StatusUnauthorized
-			}
-			user, ok := a.session(token)
-			if !ok || user == nil {
-				return nil, http.StatusUnauthorized
-			}
-			return user, http.StatusOK
-		}
-
-		presented := hashPassword(token)
-		u, ok := a.tokens[presented]
-		if !ok {
-			return nil, http.StatusUnauthorized
-		}
-
-		return &Properties{
-			User:  u.User,
-			Group: u.Group,
-		}, http.StatusOK
+		return token
 	}
-	return nil, http.StatusUnauthorized
+	return ""
+}
+
+func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
+	token := getToken(r)
+	if token == "" {
+		return nil, http.StatusUnauthorized
+	}
+
+	presented := hashPassword(token)
+	u, ok := a.tokens[presented]
+	if !ok {
+		return nil, http.StatusUnauthorized
+	}
+
+	return &Properties{
+		User:  u.User,
+		Group: u.Group,
+	}, http.StatusOK
 }
 
 // AddToken the token maps to a specific user

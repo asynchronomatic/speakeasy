@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 )
 
@@ -15,11 +14,6 @@ type OpenaiModel = modeldex.OpenaiModel
 type OpenaiModelList = modeldex.OpenaiModelList
 
 func (p *Proxy) openaiListModelsHandler(w http.ResponseWriter, r *http.Request) {
-	if mesh.IsSource(r) {
-		http.Error(w, "we should not see this rpc over the mesh network", http.StatusInternalServerError)
-		return
-	}
-
 	resp := &OpenaiModelList{
 		Object: "list",
 	}

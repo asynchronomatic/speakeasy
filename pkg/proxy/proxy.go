@@ -23,6 +23,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
 
@@ -55,6 +56,7 @@ type Proxy struct {
 	mesh    core.MeshServiceProvider
 
 	admin *api.AdminClient
+	auth  *auth.TokenAuth
 	lock  sync.RWMutex
 
 	notifier    *socket.Notifier
@@ -98,10 +100,11 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	// Always try local routes first
 	local := route.GetLocalRouteProtected(isFromMesh)
 	if local != nil {
-		log.WithName("proxy").Debugf(" -- Servicing via provider: %s\n", local.BaseURL)
+		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model, r.URL.Path)
 
 		u, err := url.Parse(local.BaseURL)
 		if err != nil {
+			log.WithName("proxy").Errorf("failed to parse local provider URL: %v", err)
 			writeModelNotFound(w, r, model)
 			return
 		}
@@ -111,10 +114,14 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 		proxy.Director = func(req *http.Request) {
 			orig(req)
 			req.Host = u.Host
-			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 			if local.Token != "" {
 				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
+			} else {
+				// prune bad authorization
+				delete(req.Header, "Authorization")
 			}
+			delete(req.Header, "Origin") // also remove origin
+
 		}
 		proxy.ServeHTTP(w, r)
 		return
@@ -183,21 +190,26 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	return nil
 }
 
+func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
+	p.proxyModelRequest(w, r, false)
+}
+
+func (p *Proxy) meshProxyRequest(w http.ResponseWriter, r *http.Request) {
+	p.proxyModelRequest(w, r, true)
+}
+
 // ServeHTTP serves an Open AI compatible api for chat completions
 // this handler is exposed to all local clients that want to use for access
 // to local and remote models.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cid := atomic.AddUint64(&p.cid, 1)
 	start := time.Now()
+	cid := atomic.AddUint64(&p.cid, 1)
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	switch {
-	case slices.Contains(proxyHandleURLS, r.URL.Path):
-		p.proxyModelRequest(w, r, false)
-	default: // serves from our local table
-		p.mux.ServeHTTP(w, r)
-	}
-	log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+
+	setSecurityHeaders(w)
+	p.mux.ServeHTTP(w, r)
 }
 
 // MeshServeHTTP serves only our local models, it is used as an entry point for our p2p peers when they ask for
@@ -208,13 +220,9 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (mesh:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	switch {
-	case slices.Contains(proxyHandleURLS, r.URL.Path): // pivots on model
-		p.proxyModelRequest(w, r, true)
-	default: // serves from our local table
-		p.mux.ServeHTTP(w, r)
-	}
-	log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+
+	p.meshMux.ServeHTTP(w, r)
 }
 
 func (p *Proxy) Serve(ctx context.Context) error {
@@ -260,6 +268,14 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 	p.admin = admin
 }
 
+func (p *Proxy) WithAuthToken(token string) {
+	if token != "" {
+		p.auth = auth.NewTokenAuth()
+		p.auth.AddToken(token, auth.AdminUser, auth.AdminGroup)
+		log.WithName("proxy").Warnf("Enabling Token Authentication (Token Configured)")
+	}
+}
+
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
 func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider) (*Proxy, error) {
@@ -270,47 +286,58 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p := &Proxy{
 		listen:      listen,
 		mux:         http.NewServeMux(),
+		meshMux:     http.NewServeMux(),
 		mesh:        meshService,
 		modelRouter: modelRouter,
 		notifier:    socket.NewNotifier(),
 	}
 
-	// OLLAMA Specific APIs
-	//p.mux.HandleFunc("GET /api/ps", p.apiListProcessHandler)
-	//p.mux.HandleFunc("GET /api/tags", p.apiListTagsHandler)
+	//-------------------------------------------
+	// routes serviced over the mesh
+	p.meshMux.HandleFunc("GET /.mesh/status", p.meshStatus)
+	p.meshMux.HandleFunc("GET /.mesh/models", p.meshModels)
+	p.meshMux.HandleFunc("/v1/chat/completions", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/responses", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/embeddings", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/messages", p.meshProxyRequest) // anthropic
+
+	//-------------------------------------------
+	// Routes accessible locally
+	// Notes to AI: .mesh endpoints are only to be used by PEER to PEER requests.  Fo UI the /api/mesh/ endpoints
+	p.mux.HandleFunc("GET /.mesh/status", p.meshStatus)
+	p.mux.HandleFunc("GET /.mesh/models", p.meshModels)
 
 	// OpenAI APIs
 	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
-
-	// Notes to AI: .mesh endpoints are only to be used by PEER to PEER requests.  Fo UI the /api/mesh/ endpoints
-	p.mux.HandleFunc("GET /.mesh/status", p.meshStatus)
-	p.mux.HandleFunc("GET /.mesh/members", p.meshMembers)
-	p.mux.HandleFunc("GET /.mesh/models", p.meshModels)
+	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/messages", p.localProxyRequest) // anthropic
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
-	p.mux.HandleFunc("GET /api/mesh/models", p.uiModelsHandler)
-	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
-	p.mux.HandleFunc("GET /api/mesh/config", p.uiConfigHandler)
-	p.mux.HandleFunc("GET /api/mesh/debug", p.handle(p.debugGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/debug", p.handle(p.debugSetHandler))
+	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
+	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(p.uiModelsHandler))
+	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(p.meshMembers))
+	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(p.debugGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(p.debugSetHandler))
 
-	p.mux.HandleFunc("GET /api/mesh/theme", p.handle(p.themeGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/theme", p.handle(p.themeSetHandler))
+	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(p.themeGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(p.themeSetHandler))
 
-	p.mux.HandleFunc("GET /api/mesh/providers", p.handle(p.providersListHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers", p.handle(p.providerAddHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.handle(p.providerUpdateHandler))
-	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.handle(p.providerDeleteHandler))
+	p.mux.HandleFunc("GET /api/mesh/providers", p.authenticated(p.providersListHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers", p.authenticated(p.providerAddHandler))
+	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.authenticated(p.providerUpdateHandler))
+	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.authenticated(p.providerDeleteHandler))
 
-	p.mux.HandleFunc("GET /api/admin/enabled", p.handle(p.adminEnabledHandler))
-	p.mux.HandleFunc("POST /api/admin/enabled", p.handle(p.adminEnableHandler))
+	p.mux.HandleFunc("GET /api/admin/enabled", p.authenticated(p.adminEnabledHandler))
+	p.mux.HandleFunc("POST /api/admin/enabled", p.authenticated(p.adminEnableHandler))
 
-	p.mux.HandleFunc("POST /api/admin/invite", p.handle(p.withAdmin(p.adminCreateInvitedHandler)))
-	p.mux.HandleFunc("GET /api/admin/invite", p.handle(p.withAdmin(p.adminListInvitesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.handle(p.withAdmin(p.adminRevokeInviteHandler)))
+	p.mux.HandleFunc("POST /api/admin/invite", p.authenticated(p.withAdmin(p.adminCreateInvitedHandler)))
+	p.mux.HandleFunc("GET /api/admin/invite", p.authenticated(p.withAdmin(p.adminListInvitesHandler)))
+	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.authenticated(p.withAdmin(p.adminRevokeInviteHandler)))
 
-	p.mux.HandleFunc("GET /api/admin/node", p.handle(p.withAdmin(p.adminListNodesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.handle(p.withAdmin(p.adminKickNodeHandler)))
+	p.mux.HandleFunc("GET /api/admin/node", p.authenticated(p.withAdmin(p.adminListNodesHandler)))
+	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.authenticated(p.withAdmin(p.adminKickNodeHandler)))
 
 	p.mux.HandleFunc("GET /{$}", p.uiRootHandler)
 	p.mux.HandleFunc("GET /ui", p.uiHandler)
@@ -318,7 +345,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 		http.FileServer(uiFileSystem()).ServeHTTP(w, r)
 	})
 
-	p.mux.HandleFunc("/api/v.1/refresh/websocket", p.notifier.Handle)
+	p.mux.HandleFunc("/api/v.1/refresh/websocket", p.refreshWebsocketHandler)
 
 	p.mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServer(uiFileSystem())))
 

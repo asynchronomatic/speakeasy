@@ -108,6 +108,9 @@ func joinWithInvite(link string, existing *core.Config) error {
 	}
 
 	cfg := configFromInvite(resp, existing)
+	if err := ensureProxyPassword(cfg); err != nil {
+		return err
+	}
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
@@ -127,6 +130,65 @@ func joinWithInvite(link string, existing *core.Config) error {
 	fmt.Println("Next:")
 	fmt.Println("  mesh proxy    # start the local proxy on this mesh")
 	return nil
+}
+
+// askProxyPassword is the interactive prompt used when joining without
+// proxy.password. Tests replace it.
+var askProxyPassword = promptProxyPassword
+
+func ensureProxyPassword(cfg *core.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("config is required")
+	}
+	if strings.TrimSpace(cfg.Proxy.Password) != "" {
+		return nil
+	}
+	pw, err := askProxyPassword()
+	if err != nil {
+		return err
+	}
+	pw = strings.TrimSpace(pw)
+	if pw == "" {
+		return fmt.Errorf("proxy.password is required")
+	}
+	cfg.Proxy.Password = pw
+	return nil
+}
+
+func promptProxyPassword() (string, error) {
+	var password, confirm string
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Proxy password").
+				Description("Protects the local proxy UI and API on this node.").
+				EchoMode(huh.EchoModePassword).
+				Value(&password).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("password is required")
+					}
+					return nil
+				}),
+			huh.NewInput().
+				Title("Confirm password").
+				EchoMode(huh.EchoModePassword).
+				Value(&confirm).
+				Validate(func(s string) error {
+					if s != password {
+						return fmt.Errorf("passwords do not match")
+					}
+					return nil
+				}),
+		).Title("Set proxy password").Description("proxy.password is not set in config.yaml."),
+	).WithAccessible(os.Getenv("ACCESSIBLE") != "").Run()
+	if aborted(err) {
+		return "", fmt.Errorf("aborted")
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(password), nil
 }
 
 func configFromInvite(resp *api.RedeemInviteResponse, existing *core.Config) *core.Config {

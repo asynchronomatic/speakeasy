@@ -2,11 +2,29 @@ package proxy
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
+
+const contentSecurityPolicy = "default-src 'self'; frame-ancestors 'none'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
+}
+
+func publicPath(path string) bool {
+	switch path {
+	case "/", "/ui", "/favicon.ico", "/api/mesh/auth":
+		return true
+	}
+	return strings.HasPrefix(path, "/ui/")
+}
 
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	host := r.Header.Get("x-forwarded-for")
@@ -28,6 +46,15 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 			p.logRequest(r, "--", start)
 		}()
 
+		if err := api.RequireSameOrigin(r); err != nil {
+			if ce, ok := err.(*api.Error); ok {
+				http.Error(w, ce.Message(), ce.Code())
+			} else {
+				http.Error(w, err.Error(), http.StatusForbidden)
+			}
+			return
+		}
+
 		rpc := &RPC{w: w, r: r}
 		if err := fn(rpc); err != nil {
 			if ce, ok := err.(*api.Error); ok {
@@ -37,6 +64,58 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+func (p *Proxy) authenticated(fn func(*RPC) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		defer func() {
+			p.logRequest(r, "--", start)
+		}()
+
+		if err := api.RequireSameOrigin(r); err != nil {
+			api.RejectSameOrigin(w, err)
+			return
+		}
+
+		if p.auth != nil {
+			_, code := p.auth.DoAuth(w, r)
+			if code != http.StatusOK {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		ctx := &RPC{w: w, r: r}
+		if err := fn(ctx); err != nil {
+			if ce, ok := err.(*api.Error); ok {
+				ctx.Error(ce.Code(), ce.Message())
+			} else {
+				ctx.Error(http.StatusInternalServerError, err.Error())
+			}
+		}
+	}
+}
+
+func (p *Proxy) authRequiredHandler(rpc *RPC) error {
+	return rpc.ReplyObject(&struct {
+		Required bool `json:"required"`
+	}{Required: p.auth != nil})
+}
+
+func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) {
+	if p.auth != nil {
+		if r.Header.Get("Authorization") == "" {
+			if tok := strings.TrimSpace(r.URL.Query().Get("access_token")); tok != "" {
+				r.Header.Set("Authorization", "Bearer "+tok)
+			}
+		}
+		if _, code := p.auth.DoAuth(w, r); code != http.StatusOK {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+	p.notifier.Handle(w, r)
 }
 
 func (p *Proxy) withAdmin(fn func(*RPC) error) func(*RPC) error {

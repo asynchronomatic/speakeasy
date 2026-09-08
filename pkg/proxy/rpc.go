@@ -22,6 +22,9 @@ func (rpc *RPC) PathVar(name string) string {
 
 func (rpc *RPC) GetObject(obj any) error {
 	defer rpc.r.Body.Close()
+	if err := api.RequireJSONContentType(rpc.r); err != nil {
+		return err
+	}
 	err := json.NewDecoder(rpc.r.Body).Decode(obj)
 	if err != nil {
 		return api.NewError(http.StatusBadRequest, "bad request")

@@ -38,7 +38,7 @@ func TestUIStaticAssets(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	for _, path := range []string{"/ui/", "/ui/css/styles.css", "/ui/js/app.js", "/ui/favicon.ico", "/ui/favicon.svg"} {
+	for _, path := range []string{"/ui/", "/ui/css/styles.css", "/ui/js/app.js", "/ui/js/theme-boot.js", "/ui/favicon.ico", "/ui/favicon.svg"} {
 		res, err := http.Get(srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
@@ -59,7 +59,7 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "debug-toggle", "debug-error", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "debug-toggle", "debug-error", "login-overlay", "login-form", "Sign in", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
@@ -187,6 +187,10 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"saveDebug",
 		"loadDebug",
 		"debugEnabled",
+		"/api/mesh/auth",
+		"bootAuth",
+		"submitLogin",
+		"AUTH_KEY",
 		"/api/mesh/providers",
 		"openProviderModal",
 		"saveProvider",

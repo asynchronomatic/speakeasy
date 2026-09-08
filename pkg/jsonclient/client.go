@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type Doer interface {
@@ -129,11 +130,17 @@ func (c *Client) WithDoer(rt Doer) *Client {
 }
 
 func NewClient(address, token string) *Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives = true
+
 	c := &Client{
 		Address: address,
 		token:   token,
 		opts:    make(map[string]string),
-		rt:      &http.Client{},
+		rt: &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: t,
+		},
 	}
 
 	return c

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
@@ -29,6 +31,7 @@ providers:
 - id: local
   type: ollama
   base_url: http://127.0.0.1:11434
+  token: secret-local
   private: false
   model_discovery: pinned
 `
@@ -55,6 +58,9 @@ func TestProvidersList(t *testing.T) {
 	got := decodeProviderList(t, res)
 	if len(got) != 1 || got[0].ID != "local" || got[0].Type != "ollama" {
 		t.Fatalf("list %+v", got)
+	}
+	if got[0].Token != "" {
+		t.Fatalf("list leaked token %q", got[0].Token)
 	}
 }
 
@@ -98,6 +104,9 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	if added.ID != "cloud" || added.BaseURL != "https://api.example" || !added.Private {
 		t.Fatalf("added %+v", added)
 	}
+	if added.Token != "" {
+		t.Fatalf("add leaked token %q", added.Token)
+	}
 
 	cfg, err := core.LoadConfigFile()
 	if err != nil {
@@ -108,6 +117,16 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}
 	if len(cfg.Providers) != 2 {
 		t.Fatalf("providers %+v", cfg.Providers)
+	}
+	local, cloud := cfg.Providers[0], cfg.Providers[1]
+	if local.ID != "local" {
+		local, cloud = cloud, local
+	}
+	if local.Token != "secret-local" {
+		t.Fatalf("add wiped local token: %+v", cfg.Providers)
+	}
+	if cloud.ID != "cloud" || cloud.Token != "tok" {
+		t.Fatalf("added provider on disk %+v", cloud)
 	}
 
 	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
@@ -128,8 +147,72 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if updated.ID != "cloud" || updated.BaseURL != "https://api.example/v1" || updated.Token != "new-tok" || updated.Private {
+	if updated.ID != "cloud" || updated.BaseURL != "https://api.example/v1" || updated.Private {
 		t.Fatalf("updated %+v", updated)
+	}
+	if updated.Token != "" {
+		t.Fatalf("update leaked token %q", updated.Token)
+	}
+
+	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+		Type:      "openai",
+		BaseURL:   "https://api.example/v1",
+		Token:     "*",
+		Private:   false,
+		Discovery: "all",
+	})
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("keep-token update %d: %s", res.StatusCode, b)
+	}
+	res.Body.Close()
+
+	cfg, err = core.LoadConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotCloud core.Provider
+	for _, pr := range cfg.Providers {
+		if pr.ID == "cloud" {
+			gotCloud = pr
+		}
+		if pr.ID == "local" && pr.Token != "secret-local" {
+			t.Fatalf("local token after update %q", pr.Token)
+		}
+	}
+	if gotCloud.Token != "new-tok" {
+		t.Fatalf("cloud token after keep update %q", gotCloud.Token)
+	}
+
+	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+		Type:      "openai",
+		BaseURL:   "https://api.example/v1",
+		Token:     "",
+		Private:   false,
+		Discovery: "all",
+	})
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("empty-token update %d: %s", res.StatusCode, b)
+	}
+	res.Body.Close()
+	cfg, err = core.LoadConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pr := range cfg.Providers {
+		if pr.ID == "cloud" && pr.Token != "new-tok" {
+			t.Fatalf("empty token overwrote cloud token %q", pr.Token)
+		}
+	}
+
+	listed := decodeProviderList(t, doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil))
+	for _, pr := range listed {
+		if pr.Token != "" {
+			t.Fatalf("list leaked token for %s: %q", pr.ID, pr.Token)
+		}
 	}
 
 	res = doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/cloud", nil)
@@ -146,6 +229,9 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}
 	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" {
 		t.Fatalf("after delete %+v", cfg.Providers)
+	}
+	if cfg.Providers[0].Token != "secret-local" {
+		t.Fatalf("delete wiped local token %q", cfg.Providers[0].Token)
 	}
 	if cfg.Mesh.Name != "box" {
 		t.Fatalf("mesh name %q", cfg.Mesh.Name)
@@ -186,6 +272,32 @@ func TestProviderUpdateMissing(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing status %d", res.StatusCode)
+	}
+}
+
+func TestProviderRejectsNonJSONContentType(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := testProxy(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d want 415", rec.Code)
+	}
+}
+
+func TestProviderRejectsCrossOrigin(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := testProxy(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
+	req.Host = "127.0.0.1:4080"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://evil.example")
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status %d want 403", rec.Code)
 	}
 }
 

@@ -8,17 +8,7 @@
   <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <script>
-    (function () {
-      try {
-        var allowed = { night: 1, deco: 1, cyber: 1, clean: 1 };
-        var t = localStorage.getItem("speakeasy-theme") || "deco";
-        document.documentElement.setAttribute("data-theme", allowed[t] ? t : "deco");
-      } catch (e) {
-        document.documentElement.setAttribute("data-theme", "deco");
-      }
-    })();
-  </script>
+  <script src="/ui/js/theme-boot.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Josefin+Sans:wght@400;500;600;700&family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/ui/css/styles.css">
 </head>
@@ -408,6 +398,27 @@
       </main>
     </div>
   </div>
+  <div id="login-overlay" class="modal hidden" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-header">
+        <h3 id="login-title">Sign in</h3>
+      </div>
+      <form id="login-form" class="modal-form">
+        <div class="modal-body">
+          <p class="muted">This proxy is password protected.</p>
+          <label class="admin-field">
+            <span>Password</span>
+            <input type="password" id="login-password" placeholder="proxy password" autocomplete="current-password" required>
+          </label>
+          <p id="login-error" class="admin-error hidden" hidden></p>
+        </div>
+        <div class="modal-footer-actions">
+          <button type="submit" class="btn btn-primary" id="login-submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div id="admin-invite-modal" class="modal hidden" hidden>
     <div class="modal-backdrop" data-close-invite-modal></div>
     <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="admin-invite-modal-title">
@@ -471,7 +482,7 @@
             </label>
             <label class="admin-field">
               <span>Token</span>
-              <input type="password" id="provider-token" placeholder="optional" autocomplete="off">
+              <input type="password" id="provider-token" placeholder="optional" autocomplete="off" value="">
             </label>
             <label class="admin-field">
               <span>Model discovery</span>

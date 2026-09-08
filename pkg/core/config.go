@@ -11,7 +11,7 @@ import (
 
 var DefaultRelayPort = 4001
 var DefaultAdminPort = 4002
-var DefaultProxyListen = ":4080"
+var DefaultProxyListen = "127.0.0.1:4080"
 
 const DefaultTheme = "deco"
 
@@ -76,8 +76,9 @@ type MeshConfig struct {
 
 type Config struct {
 	Proxy struct {
-		Listen string `yaml:"listen"`
-		Theme  string `yaml:"theme,omitempty" json:"theme"`
+		Listen   string `yaml:"listen"`
+		Theme    string `yaml:"theme,omitempty"`
+		Password string `yaml:"password"`
 	} `yaml:"proxy"`
 	Admin     AdminConfig `yaml:"admin"`
 	Mesh      MeshConfig  `yaml:"mesh"`

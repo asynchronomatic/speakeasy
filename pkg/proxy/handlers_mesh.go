@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -28,13 +29,12 @@ type MeshMembersResponse struct {
 	Nodes []NodeStatus
 }
 
-func (p *Proxy) meshMembers(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) meshMembers(rpc *RPC) error {
 	resp := MeshMembersResponse{}
 
 	peers, err := p.mesh.GetPeerMap()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return api.NewError(http.StatusInternalServerError, err.Error())
 	}
 
 	for _, peer := range peers {
@@ -71,8 +71,7 @@ func (p *Proxy) meshMembers(w http.ResponseWriter, r *http.Request) {
 		resp.Nodes = append(resp.Nodes, status)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&resp)
+	return rpc.ReplyObject(&resp)
 }
 
 // meshModels is called byt a peer node to get this nodes exported(local) models

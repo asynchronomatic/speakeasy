@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -99,28 +98,7 @@ func (p *Proxy) uiHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
 }
 
-type UIConfigResponse struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}
-
-func (p *Proxy) uiConfigHandler(w http.ResponseWriter, r *http.Request) {
-	path := "config.yaml"
-	data, err := os.ReadFile(path)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&UIConfigResponse{
-		Path:    path,
-		Content: string(data),
-	})
-}
-
-func (p *Proxy) uiModelsHandler(w http.ResponseWriter, r *http.Request) {
-	//peers, _ := p.mesh.GetPeerMap()
-
+func (p *Proxy) uiModelsHandler(rpc *RPC) error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -148,8 +126,7 @@ func (p *Proxy) uiModelsHandler(w http.ResponseWriter, r *http.Request) {
 		return resp.Models[i].Name < resp.Models[j].Name
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&resp)
+	return rpc.ReplyObject(&resp)
 }
 
 func shortPeer(id string) string {
@@ -175,6 +152,7 @@ func (p *Proxy) debugSetHandler(rpc *RPC) error {
 	}
 
 	return rpc.ReplyObject(&req)
+
 }
 
 func (p *Proxy) debugGetHandler(rpc *RPC) error {

@@ -61,56 +61,6 @@ func OutboundIP() (string, error) {
 }
 
 // only allow the admin user in
-func (s *Server) asAdmin(fn func(*JsonRPC) error) func(*JsonRPC) error {
-	return func(ctx *JsonRPC) error {
-		if ctx.Group() != "admin" {
-			return api.NewError(http.StatusUnauthorized, "not authorized")
-		}
-		return fn(ctx)
-	}
-}
-
-func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		defer func() {
-			s.logRequest(r, "--", start)
-		}()
-
-		ctx := &JsonRPC{w: w, r: r, user: nil}
-		if err := fn(ctx); err != nil {
-			if ce, ok := err.(*api.Error); ok {
-				ctx.Error(ce.Code(), ce.Message())
-			} else {
-				ctx.Error(http.StatusInternalServerError, err.Error())
-			}
-		}
-	}
-}
-
-func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		defer func() {
-			s.logRequest(r, "--", start)
-		}()
-
-		user, code := s.auth.DoAuth(w, r)
-		if code != http.StatusOK {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := &JsonRPC{w: w, r: r, user: user}
-		if err := fn(ctx); err != nil {
-			if ce, ok := err.(*api.Error); ok {
-				ctx.Error(ce.Code(), ce.Message())
-			} else {
-				ctx.Error(http.StatusInternalServerError, err.Error())
-			}
-		}
-	}
-}
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -259,7 +209,10 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 	}
 
 	a := auth.NewTokenAuth()
-	a.AddUser("admin", "admin", adminKey)
+	err = a.AddToken(adminKey, "admin", AdminGroup)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		mainAddress: listenAddress,

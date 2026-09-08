@@ -12,3 +12,8 @@ curl  http://localhost:10080/api/chat \
       }
     ]
   }' 
+
+
+curl  http://10.0.0.26:11434/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemma4:31b","messages":[{"role":"user","content":"hello?"},{"role":"user","content":"hi"},{"role":"user","content":"hi"},{"role":"user","content":"hi"}],"stream":true}'

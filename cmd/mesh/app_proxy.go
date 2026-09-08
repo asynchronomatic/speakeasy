@@ -18,6 +18,11 @@ func runProxy(config *core.Config) error {
 	}
 	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers)
 	attachAdminController(p, config)
+
+	if config.Proxy.Password != "" {
+		p.WithAuthToken(config.Proxy.Password)
+	}
+
 	return core.RunInterruptible(p)
 }
 

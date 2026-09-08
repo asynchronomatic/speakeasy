@@ -2,17 +2,26 @@ package socket
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/asynchronomatic/speakeasy/api"
 )
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  64,
 	WriteBufferSize: 64,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     allowUpgrade,
+}
+
+func allowUpgrade(r *http.Request) bool {
+	site := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")))
+	if site == "cross-site" || site == "nested-cross-origin" {
+		return false
+	}
+	return api.OriginOK(r)
 }
 
 type Notifier struct {
@@ -55,6 +64,10 @@ func (n *Notifier) Poll() {
 }
 
 func (n *Notifier) Handle(w http.ResponseWriter, r *http.Request) {
+	if !allowUpgrade(r) {
+		http.Error(w, "origin mismatch", http.StatusForbidden)
+		return
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

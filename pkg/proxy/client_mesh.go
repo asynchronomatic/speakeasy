@@ -58,14 +58,6 @@ func (c *MeshClient) GetMeshStatus() (NodeStatus, error) {
 	return resp.Status, err
 }
 
-func (c *MeshClient) GetMeshMembers() ([]NodeStatus, error) {
-	resp := MeshMembersResponse{}
-
-	jc := jsonclient.NewClient(fmt.Sprintf("http://%s.mesh", c.address), "").WithDoer(c.client)
-	err := jc.Get("/.mesh/members", &resp)
-	return resp.Nodes, err
-}
-
 // NewMeshClient creates a client to the ollama interface wrapping the api into our model format
 // this client can also use a custom http.Client which is connected over our peer network
 func NewMeshClient(address string, client jsonclient.Doer) *MeshClient {
