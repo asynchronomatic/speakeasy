@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"text/tabwriter"
+	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -21,8 +22,8 @@ func adminCommand() *cli.Command {
 				Usage: "Create a mesh invite link",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "name", Usage: "name attached to invited nodes"},
-					&cli.DurationFlag{Name: "lifetime", Usage: "invite lifetime (0 = forever)"},
-					&cli.BoolFlag{Name: "once", Usage: "expire after first redeem"},
+					&cli.DurationFlag{Name: "lifetime", Usage: "invite lifetime (default 24h; ignored with --forever)", Value: 24 * time.Hour},
+					&cli.BoolFlag{Name: "reusable", Usage: "expire after first redeem (default true)", Value: false},
 				},
 				Action: adminInvite,
 			},
@@ -44,10 +45,11 @@ func adminCommand() *cli.Command {
 
 func adminInvite(_ context.Context, cmd *cli.Command) error {
 	lifetime := cmd.Duration("lifetime")
+
 	resp, err := newAPI(cmd).Admin().CreateInvite(api.CreateInviteRequest{
 		MeshId:      cmd.String("mesh"),
 		Name:        cmd.String("name"),
-		OneTime:     cmd.Bool("once"),
+		Reusable:    cmd.Bool("reusable"),
 		LifetimeSec: uint64(lifetime.Seconds()),
 	})
 	if err != nil {
@@ -55,6 +57,16 @@ func adminInvite(_ context.Context, cmd *cli.Command) error {
 	}
 	fmt.Fprintf(out(), "invite id:   %s\n", resp.InviteId)
 	fmt.Fprintf(out(), "invite link: %s\n", resp.InviteLink)
+	if resp.Reusable {
+		fmt.Fprintf(out(), "uses:        1 remaining\n")
+	} else {
+		fmt.Fprintf(out(), "uses:        unlimited\n")
+	}
+	if resp.Expires == 0 {
+		fmt.Fprintf(out(), "expires:     never (until revoked)\n")
+	} else {
+		fmt.Fprintf(out(), "expires:     %s\n", time.Unix(resp.Expires, 0).UTC().Format(time.RFC3339))
+	}
 	return nil
 }
 

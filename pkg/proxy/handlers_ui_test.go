@@ -59,7 +59,7 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "debug-toggle", "debug-error", "login-overlay", "login-form", "Sign in", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "debug-toggle", "debug-error", "login-overlay", "login-form", "Sign in", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy", `value="86400" selected`, `id="admin-invite-once" checked`, "Never expires", "<th>Uses</th>"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
@@ -167,6 +167,10 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"enableAdmin",
 		"setAdminEnabled",
 		"createInvite",
+		"Forever",
+		"Reusable",
+		"1 remaining",
+		"This invite will never expire",
 		"openInviteModal",
 		"revokeInvite",
 		"kickNode",

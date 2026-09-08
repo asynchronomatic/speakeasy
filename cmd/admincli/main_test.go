@@ -57,6 +57,21 @@ func TestAdminHelp(t *testing.T) {
 	}
 }
 
+func TestAdminInviteHelp(t *testing.T) {
+	cmd := newCommand()
+	var buf bytes.Buffer
+	cmd.Writer = &buf
+	if err := cmd.Run(context.Background(), []string{"admincli", "--token", "x", "admin", "invite", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, needle := range []string{"lifetime", "reusable", "24h"} {
+		if !strings.Contains(out, needle) {
+			t.Fatalf("invite help missing %q:\n%s", needle, out)
+		}
+	}
+}
+
 func TestRequireToken(t *testing.T) {
 	cmd := newCommand()
 	cmd.Writer = io.Discard

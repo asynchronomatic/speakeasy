@@ -224,7 +224,7 @@ func TestApiNodeLoginExpiredSession(t *testing.T) {
 
 func TestMeshClientLogin(t *testing.T) {
 	_, ts := newAdminTestServer(t)
-	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: true})
 	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-client-login", Name: "n1"})
 	assert.NoError(t, err)
 

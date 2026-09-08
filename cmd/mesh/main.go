@@ -42,7 +42,7 @@ func discoverPublicAddress(config *core.Config) string {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage:", os.Args[0], "init | join <invite-url> | proxy | admin | hybrid(proxy+admin)")
+		fmt.Fprintln(os.Stderr, "usage:", os.Args[0], "join <invite-url> | proxy | admin ")
 		os.Exit(1)
 	}
 

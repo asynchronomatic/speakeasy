@@ -23,7 +23,7 @@ import (
 type inviteSecret struct {
 	UUID     string
 	MeshId   string
-	OneTime  bool
+	Reusable bool
 	Expires  int64
 	InviteAs string
 }
@@ -95,11 +95,9 @@ func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
 	// FIXME: we only have the default mesh
 	req.MeshId = "default"
 
-	// make a unique invite code that can be used to jin the mesh
-	// 1. The code will expire once older then LifetimeSec
-	// 2. If OneTime it should expire after first use
-	// 3. Otherwise live forever
-	// 4. the code can be stored iun our kv server under /invites/<meshID>/<code>
+	// Invite codes are stored under /invites/<meshID>/<code>.
+	// Defaults: one-time, 24h expiry. Forever/reusable require explicit flags.
+
 	inviteUUID, err := newInviteID()
 	if err != nil {
 		return err
@@ -107,7 +105,7 @@ func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
 
 	invite := inviteSecret{
 		UUID:     inviteUUID,
-		OneTime:  req.OneTime,
+		Reusable: req.Reusable,
 		MeshId:   req.MeshId,
 		InviteAs: req.Name,
 	}
@@ -124,6 +122,8 @@ func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
 	resp := api.CreateInviteResponse{
 		InviteId:   inviteID,
 		InviteLink: fmt.Sprintf("%s/api/v1/redeem/%s", base, inviteID),
+		Reusable:   invite.Reusable,
+		Expires:    invite.Expires,
 	}
 	return ctx.ReplyObject(&resp)
 }
@@ -184,7 +184,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 		return err
 	}
 
-	if invite.OneTime {
+	if !invite.Reusable {
 		if err := s.kv.Delete(key); err != nil {
 			return err
 		}
@@ -224,7 +224,7 @@ func (s *Server) adminListInviteLinks(ctx *JsonRPC) error {
 			InviteId:   id,
 			InviteLink: fmt.Sprintf("%s/api/v1/redeem/%s", base, id),
 			Name:       invite.InviteAs,
-			OneTime:    invite.OneTime,
+			Reusable:   invite.Reusable,
 			Expires:    invite.Expires,
 			MeshId:     invite.MeshId,
 		})
