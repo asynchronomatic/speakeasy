@@ -3,7 +3,6 @@ package mesh
 import (
 	"crypto/rand"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -105,10 +104,6 @@ func NodeIDFromKey(key crypto.PrivKey) (string, error) {
 		return "", err
 	}
 	return id.String(), nil
-}
-
-func IsSource(r *http.Request) bool {
-	return r.Header.Get("X-Mesh") == "true"
 }
 
 func ConnKind(c network.Conn) string {

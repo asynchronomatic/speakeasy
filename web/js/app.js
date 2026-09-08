@@ -1243,7 +1243,10 @@
     }
     setSelectValue(el.providerType, editing ? providerField(p, "type", "Type") : "", "ollama");
     if (el.providerBaseURL) el.providerBaseURL.value = editing ? providerField(p, "base_url", "BaseURL") : "";
-    if (el.providerToken) el.providerToken.value = editing ? providerField(p, "token", "Token") : "";
+    if (el.providerToken) {
+      el.providerToken.value = "";
+      el.providerToken.placeholder = editing ? "leave blank to keep" : "optional";
+    }
     setSelectValue(el.providerDiscovery, editing ? providerField(p, "model_discovery", "Discovery") : "", "pinned");
     if (el.providerPrivate) el.providerPrivate.checked = !!(p && (p.private || p.Private));
     renderProviderModels(editing ? (p.models || p.Models || []) : []);

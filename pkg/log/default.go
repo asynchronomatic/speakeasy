@@ -5,7 +5,7 @@ var DefaultTimeFormat = "2006-01-02 15:04:05"
 var Default = &Log{
 	component: "ALL",
 	fmtTime:   DefaultTimeFormat,
-	level:     LogAll,
+	level:     LogNormal,
 	printer:   ColorPrinter,
 }
 

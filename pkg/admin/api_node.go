@@ -36,6 +36,10 @@ func (s *Server) apiNodeAuthorize(ctx *JsonRPC) error {
 	if req.Node.ID == "" {
 		return api.NewError(http.StatusBadRequest, "node peer id is required")
 	}
+	// only session node or admin can authorize
+	if req.Node.ID != ctx.User() && ctx.Group() != AdminGroup {
+		return api.NewError(http.StatusBadRequest, "node peer id is bad")
+	}
 
 	s.acl.Add(req.Node.ID)
 	return ctx.ReplyObject(&req.Node)
@@ -56,6 +60,10 @@ func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
 
 	if !s.acl.Has(req.Node.ID) {
 		return api.NewError(http.StatusBadRequest, "node not Authorized")
+	}
+
+	if req.Node.ID != ctx.User() && ctx.Group() != AdminGroup {
+		return api.NewError(http.StatusBadRequest, "node peer id is bad")
 	}
 
 	s.lock.Lock()
@@ -89,6 +97,11 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 		return api.NewError(http.StatusBadRequest, "node id is required")
 	}
 
+	// only the node logged in can perform this action
+	if id != ctx.User() {
+		return api.NewError(http.StatusBadRequest, "invalid node")
+	}
+
 	req := api.RegisterNodeRequest{}
 	if err := ctx.GetObject(&req); err != nil {
 		return api.NewError(http.StatusBadRequest, err.Error())
@@ -100,7 +113,7 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 
 	updateNode := func(req *api.RegisterNodeRequest) bool {
 		if req.Token == "" {
-			log.Errorf("node token is required")
+			log.Errorf("node token is required for %s", id)
 			return false
 		}
 
@@ -111,7 +124,7 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 		}
 
 		if ref.Token != req.Token {
-			log.Errorf("token mismatch %s %s", ref.Token, req.Token)
+			log.Errorf("token mismatch in refresh for %s", id)
 			return false
 		}
 		ref.LastPing = time.Now()
@@ -139,6 +152,11 @@ func (s *Server) apiNodeUnregister(ctx *JsonRPC) error {
 	id := ctx.PathVar("id")
 	if id == "" {
 		return api.NewError(http.StatusBadRequest, "node id is required")
+	}
+
+	// only the node logged in can Unregister itself
+	if id != ctx.User() && ctx.Group() != AdminGroup {
+		return api.NewError(http.StatusBadRequest, "invalid node")
 	}
 
 	s.lock.Lock()
@@ -217,7 +235,7 @@ func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error
 	if claims.Expires != 0 && time.Now().Unix() >= claims.Expires {
 		return nil, errors.New("session expired")
 	}
-	return &auth.Properties{User: claims.NodeID, Group: "mesh"}, nil
+	return &auth.Properties{User: claims.NodeID, Group: MeshGroup}, nil
 }
 
 func (s *Server) refreshSessionToken(token string) (string, int64, error) {

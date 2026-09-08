@@ -52,10 +52,9 @@ func (p *Proxy) adminEnableHandler(rpc *RPC) error {
 		p.WithAdminController(admin)
 		return nil
 	}()
-
 	p.lock.Unlock()
+
 	if err != nil {
-		p.lock.Unlock()
 		return err
 	}
 

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
@@ -58,7 +60,7 @@ func TestApiNodeLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if props.User != "peer-login-1" || props.Group != "mesh" {
+	if props.User != "peer-login-1" || props.Group != MeshGroup {
 		t.Fatalf("session props %+v", props)
 	}
 }
@@ -105,9 +107,10 @@ func TestMeshClientLogin(t *testing.T) {
 	_, ts := newAdminTestServer(t)
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
 	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-client-login", Name: "n1"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
+
+	_, err = api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-client-bad", Name: "bad"})
+	assert.NoError(t, err)
 
 	mc, err := api.NewClient(ts.URL, "").Mesh("default")
 	if err != nil {
@@ -119,4 +122,16 @@ func TestMeshClientLogin(t *testing.T) {
 	if _, err := mc.GetPeers(); err != nil {
 		t.Fatalf("session after login: %v", err)
 	}
+
+	_, err = mc.Register("n1", "peer-client-login")
+	assert.NoError(t, err)
+
+	_, err = mc.Register("n1", "peer-client-bad")
+	assert.Error(t, err)
+
+	err = mc.Unregister("peer-client-bad")
+	assert.Error(t, err)
+
+	err = mc.Unregister("peer-client-login")
+	assert.NoError(t, err)
 }

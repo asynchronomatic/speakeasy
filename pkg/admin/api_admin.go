@@ -82,7 +82,7 @@ func meshNodeKVKey(meshID, nodeID string) string {
 }
 
 func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
-	assert.Equal("admin", ctx.Group())
+	assert.Equal(AdminGroup, ctx.Group())
 
 	req := api.CreateInviteRequest{}
 	if err := ctx.GetObject(&req); err != nil {
@@ -133,6 +133,9 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 	if inviteID == "" {
 		return api.NewError(http.StatusBadRequest, "invite id is required")
 	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	// FIXME: we only have the default mesh
 	key := inviteKVKey("default", inviteID)
@@ -196,7 +199,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 }
 
 func (s *Server) adminListInviteLinks(ctx *JsonRPC) error {
-	assert.Equal("admin", ctx.Group())
+	assert.Equal(AdminGroup, ctx.Group())
 
 	prefix := "/invites/default/"
 	base := strings.TrimRight(s.advertiseURL, "/")
@@ -250,7 +253,7 @@ func parseMeshNodeKVKey(key string) (meshID, nodeID string, ok bool) {
 
 // adminListNodes lists nodes stored in the database across every mesh.
 func (s *Server) adminListNodes(ctx *JsonRPC) error {
-	assert.Equal("admin", ctx.Group())
+	assert.Equal(AdminGroup, ctx.Group())
 
 	nodes := make([]api.AdminNode, 0)
 	err := s.kv.ForEach("/mesh/", func(key string, data []byte) error {
@@ -315,7 +318,7 @@ func (s *Server) meshKeysForNode(id string) ([]string, error) {
 
 // adminDeleteNode removes a node from every mesh in the database and from the allow list.
 func (s *Server) adminDeleteNode(ctx *JsonRPC) error {
-	assert.Equal("admin", ctx.Group())
+	assert.Equal(AdminGroup, ctx.Group())
 
 	id := ctx.PathVar("id")
 	if id == "" {
@@ -355,7 +358,7 @@ func (s *Server) adminKickPeer(ctx *JsonRPC) error {
 }
 
 func (s *Server) adminDeleteInviteLink(ctx *JsonRPC) error {
-	assert.Equal("admin", ctx.Group())
+	assert.Equal(AdminGroup, ctx.Group())
 
 	inviteID := ctx.PathVar("id")
 	if inviteID == "" {

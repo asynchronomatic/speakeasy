@@ -66,24 +66,6 @@ func TestResponsesUnknownModelOpenAIError(t *testing.T) {
 	}
 }
 
-func TestOllamaChatUnknownModelJSON(t *testing.T) {
-	p := testProxy(t)
-	rec := postModel(t, p, "/api/chat", "nope-model")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status %d want 404", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
-		t.Fatalf("content-type %q", ct)
-	}
-	var got map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("json: %v body %s", err, rec.Body.String())
-	}
-	if got["error"] != "model 'nope-model' not found" {
-		t.Fatalf("error %q", got["error"])
-	}
-}
-
 func TestMeshUnknownModelOpenAIError(t *testing.T) {
 	p := testProxy(t)
 	body := `{"model":"ghost","messages":[{"role":"user","content":"hi"}]}`

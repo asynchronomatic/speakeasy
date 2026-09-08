@@ -51,7 +51,7 @@ type DiscoveryManager struct {
 
 // FIXME: exit loop on context close
 func (d *DiscoveryManager) listenForMeshEvents(ctx context.Context) {
-	defer log.WithName("disc").Fatalf("discovery routine exited")
+	defer log.WithName("disc").Eventf("discovery routine exited")
 
 	sub, _ := d.h.EventBus().Subscribe([]any{
 		new(event.EvtLocalAddressesUpdated),

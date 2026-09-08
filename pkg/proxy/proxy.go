@@ -212,7 +212,7 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case slices.Contains(proxyHandleURLS, r.URL.Path): // pivots on model
 		p.proxyModelRequest(w, r, true)
 	default: // serves from our local table
-		p.mux.ServeHTTP(w, r)
+		p.meshMux.ServeHTTP(w, r)
 	}
 	log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
 }
@@ -270,27 +270,31 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p := &Proxy{
 		listen:      listen,
 		mux:         http.NewServeMux(),
+		meshMux:     http.NewServeMux(),
 		mesh:        meshService,
 		modelRouter: modelRouter,
 		notifier:    socket.NewNotifier(),
 	}
 
-	// OLLAMA Specific APIs
-	//p.mux.HandleFunc("GET /api/ps", p.apiListProcessHandler)
-	//p.mux.HandleFunc("GET /api/tags", p.apiListTagsHandler)
+	//-------------------------------------------
+	// routes serviced over the mesh
+	p.meshMux.HandleFunc("GET /.mesh/status", p.meshStatus)
+	p.meshMux.HandleFunc("GET /.mesh/members", p.meshMembers)
+	p.meshMux.HandleFunc("GET /.mesh/models", p.meshModels)
 
-	// OpenAI APIs
-	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
-
+	//-------------------------------------------
+	// Routes accessible locally
 	// Notes to AI: .mesh endpoints are only to be used by PEER to PEER requests.  Fo UI the /api/mesh/ endpoints
 	p.mux.HandleFunc("GET /.mesh/status", p.meshStatus)
 	p.mux.HandleFunc("GET /.mesh/members", p.meshMembers)
 	p.mux.HandleFunc("GET /.mesh/models", p.meshModels)
 
+	// OpenAI APIs
+	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
+
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("GET /api/mesh/models", p.uiModelsHandler)
 	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
-	p.mux.HandleFunc("GET /api/mesh/config", p.uiConfigHandler)
 	p.mux.HandleFunc("GET /api/mesh/debug", p.handle(p.debugGetHandler))
 	p.mux.HandleFunc("POST /api/mesh/debug", p.handle(p.debugSetHandler))
 

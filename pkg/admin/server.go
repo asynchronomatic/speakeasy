@@ -63,7 +63,7 @@ func OutboundIP() (string, error) {
 // only allow the admin user in
 func (s *Server) asAdmin(fn func(*JsonRPC) error) func(*JsonRPC) error {
 	return func(ctx *JsonRPC) error {
-		if ctx.Group() != "admin" {
+		if ctx.Group() != AdminGroup {
 			return api.NewError(http.StatusUnauthorized, "not authorized")
 		}
 		return fn(ctx)
@@ -259,7 +259,7 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 	}
 
 	a := auth.NewTokenAuth()
-	a.AddUser("admin", "admin", adminKey)
+	a.AddUser("admin", AdminGroup, adminKey)
 
 	s := &Server{
 		mainAddress: listenAddress,

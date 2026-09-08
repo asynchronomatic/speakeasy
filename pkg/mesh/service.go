@@ -171,6 +171,11 @@ func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *
 
 	for k, v := range resp.Header {
 		for _, s := range v {
+			// do not forward authorization headers
+			if k == "Authorization" {
+				continue
+			}
+
 			w.Header().Add(k, s)
 		}
 	}
@@ -213,7 +218,6 @@ func (m *Service) streamHandler(stream network.Stream) {
 	// Indicate that this is coming from the mesh, this is used to prevent
 	// recursing requests back into the mesh
 	req.RemoteAddr = stream.Conn().RemotePeer().String()
-	req.Header.Set("X-Mesh", "true")
 	m.handler.ServeHTTP(&streamResponseWriter{s: stream}, req)
 }
 
@@ -409,8 +413,8 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 		opts = append(opts, libp2p.ForceReachabilityPublic())
 
 		// Advertise the public endpoint as well
-		pubTCP := ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/4001", mc.PublicAddress))
-		pubUDP := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/4001/quic-v1", mc.PublicAddress))
+		pubTCP := ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%d", mc.PublicAddress, mc.Port))
+		pubUDP := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", mc.PublicAddress, mc.Port))
 		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
 			return append(addrs, pubTCP, pubUDP)
 		}))
