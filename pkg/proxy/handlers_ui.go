@@ -11,6 +11,7 @@ import (
 	"github.com/ollama/ollama/types/model"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/web"
 )
@@ -98,7 +99,7 @@ func (p *Proxy) uiHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
 }
 
-func (p *Proxy) uiModelsHandler(rpc *RPC) error {
+func (p *Proxy) uiModelsHandler(rpc *jsonrpc.RPC) error {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -129,14 +130,7 @@ func (p *Proxy) uiModelsHandler(rpc *RPC) error {
 	return rpc.ReplyObject(&resp)
 }
 
-func shortPeer(id string) string {
-	if len(id) <= 12 {
-		return id
-	}
-	return id[:8] + "…"
-}
-
-func (p *Proxy) debugSetHandler(rpc *RPC) error {
+func (p *Proxy) debugSetHandler(rpc *jsonrpc.RPC) error {
 	req := struct {
 		DebugEnabled bool `json:"debugEnabled"`
 	}{}
@@ -155,7 +149,7 @@ func (p *Proxy) debugSetHandler(rpc *RPC) error {
 
 }
 
-func (p *Proxy) debugGetHandler(rpc *RPC) error {
+func (p *Proxy) debugGetHandler(rpc *jsonrpc.RPC) error {
 	req := struct {
 		DebugEnabled bool `json:"debugEnabled"`
 	}{

@@ -8,10 +8,11 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-func (p *Proxy) adminEnabledHandler(rpc *RPC) error {
+func (p *Proxy) adminEnabledHandler(rpc *jsonrpc.RPC) error {
 	resp := struct {
 		Enabled bool `json:"enabled"`
 	}{
@@ -20,7 +21,7 @@ func (p *Proxy) adminEnabledHandler(rpc *RPC) error {
 	return rpc.ReplyObject(&resp)
 }
 
-func (p *Proxy) adminEnableHandler(rpc *RPC) error {
+func (p *Proxy) adminEnableHandler(rpc *jsonrpc.RPC) error {
 	req := struct {
 		Token string `json:"token"`
 	}{}
@@ -29,24 +30,24 @@ func (p *Proxy) adminEnableHandler(rpc *RPC) error {
 	}
 	req.Token = strings.TrimSpace(req.Token)
 	if req.Token == "" {
-		return api.NewError(http.StatusBadRequest, "token is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "token is required")
 	}
 
 	admin := api.NewClient(p.mesh.AdminAddress(), req.Token).Admin()
 	if _, err := admin.ListInvites(); err != nil {
-		return api.NewError(http.StatusPreconditionFailed, "invalid token")
+		return jsonrpc.NewError(http.StatusPreconditionFailed, "invalid token")
 	}
 
 	p.lock.Lock()
 	err := func() error {
 		cfg, err := core.LoadConfigFile()
 		if err != nil {
-			return api.NewError(http.StatusInternalServerError, err.Error())
+			return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
 		}
 		cfg.Admin.Address = p.mesh.AdminAddress()
 		cfg.Admin.Secret = req.Token
 		if err := core.SaveConfig(cfg); err != nil {
-			return api.NewError(http.StatusInternalServerError, err.Error())
+			return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
 		}
 
 		p.WithAdminController(admin)
@@ -66,7 +67,7 @@ func (p *Proxy) adminEnableHandler(rpc *RPC) error {
 	return rpc.ReplyObject(&resp)
 }
 
-func (p *Proxy) adminCreateInvitedHandler(rpc *RPC) error {
+func (p *Proxy) adminCreateInvitedHandler(rpc *jsonrpc.RPC) error {
 	assert.NotNil(p.admin)
 
 	req := api.CreateInviteRequest{}
@@ -83,7 +84,7 @@ func (p *Proxy) adminCreateInvitedHandler(rpc *RPC) error {
 	return rpc.ReplyObject(resp)
 }
 
-func (p *Proxy) adminListInvitesHandler(rpc *RPC) error {
+func (p *Proxy) adminListInvitesHandler(rpc *jsonrpc.RPC) error {
 	assert.NotNil(p.admin)
 
 	resp, err := p.admin.ListInvites()
@@ -94,12 +95,12 @@ func (p *Proxy) adminListInvitesHandler(rpc *RPC) error {
 	return rpc.ReplyObject(resp)
 }
 
-func (p *Proxy) adminRevokeInviteHandler(rpc *RPC) error {
+func (p *Proxy) adminRevokeInviteHandler(rpc *jsonrpc.RPC) error {
 	assert.NotNil(p.admin)
 
 	id := rpc.PathVar("id")
 	if id == "" {
-		return api.NewError(http.StatusBadRequest, "invite id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "invite id is required")
 	}
 	if err := p.admin.DeleteInvite(id); err != nil {
 		return err
@@ -107,7 +108,7 @@ func (p *Proxy) adminRevokeInviteHandler(rpc *RPC) error {
 	return rpc.ReplyObject(&api.DeleteInviteRequest{Invite: id})
 }
 
-func (p *Proxy) adminListNodesHandler(rpc *RPC) error {
+func (p *Proxy) adminListNodesHandler(rpc *jsonrpc.RPC) error {
 	assert.NotNil(p.admin)
 
 	resp, err := p.admin.ListNodes()
@@ -117,12 +118,12 @@ func (p *Proxy) adminListNodesHandler(rpc *RPC) error {
 	return rpc.ReplyObject(resp)
 }
 
-func (p *Proxy) adminKickNodeHandler(rpc *RPC) error {
+func (p *Proxy) adminKickNodeHandler(rpc *jsonrpc.RPC) error {
 	assert.NotNil(p.admin)
 
 	id := rpc.PathVar("id")
 	if id == "" {
-		return api.NewError(http.StatusBadRequest, "node id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id is required")
 	}
 	if err := p.admin.KickPeer(id); err != nil {
 		return err

@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 type MeshNode struct {
@@ -30,7 +30,7 @@ func (t *MeshNode) Disconnect() error {
 	return t.orchestrator.Disconnect(t)
 }
 
-func (t *MeshNode) ClientForPeer(dest core.PeerNode, longLived bool) jsonclient.Doer {
+func (t *MeshNode) ClientForPeer(dest core.PeerNode, longLived bool) jsonrpc.Doer {
 	return t.orchestrator.ClientForPeer(dest, longLived)
 }
 

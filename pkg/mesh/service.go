@@ -21,7 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/security"
 
@@ -128,7 +128,7 @@ func (m *Service) NewStream(destNode string, longLived bool, proto protocol.ID) 
 	return m.openStream(context.Background(), destID, longLived, proto)
 }
 
-func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonclient.Doer {
+func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer {
 	destID := m.connectNode(peer.ID)
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {

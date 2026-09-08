@@ -3,16 +3,21 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
+
+var ProxyLoginToken = "test-password"
 
 func testProxy(t *testing.T) *Proxy {
 	t.Helper()
@@ -26,6 +31,8 @@ func newTestProxy(t *testing.T, providers []core.Provider, allowPrivate bool) *P
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	p.WithAdminToken(ProxyLoginToken)
 	return p
 }
 
@@ -40,6 +47,7 @@ func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Re
 		r = bytes.NewReader(b)
 	}
 	req := httptest.NewRequest(method, path, r)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -51,6 +59,7 @@ func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Re
 func TestSecurityHeaders(t *testing.T) {
 	p := testProxy(t)
 	req := httptest.NewRequest(http.MethodGet, "/ui/", nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
 	res := rec.Result()
@@ -87,14 +96,12 @@ func TestAuthRequiredOff(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Required {
-		t.Fatal("expected required=false")
-	}
+	assert.True(t, got.Required)
 }
 
 func TestAuthRequiredOn(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 
 	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/auth", nil)
 	if res.StatusCode != http.StatusOK {
@@ -174,6 +181,7 @@ func TestAdminEnableToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.WithAdminToken(ProxyLoginToken)
 
 	res := doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": ""})
 	if res.StatusCode != http.StatusBadRequest {

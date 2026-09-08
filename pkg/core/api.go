@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 type PeerConnectionDetails struct {
@@ -50,7 +50,7 @@ type MeshServiceProvider interface {
 	Node() PeerNode
 	Connect() error
 	Disconnect() error
-	ClientForPeer(dest PeerNode, longLived bool) jsonclient.Doer // Doer probably belongs in a common package
+	ClientForPeer(dest PeerNode, longLived bool) jsonrpc.Doer // Doer probably belongs in a common package
 	ProxyToNode(dest PeerNode, w http.ResponseWriter, r *http.Request)
 
 	GetPeerMeshInfo(node PeerNode) *MeshInfo

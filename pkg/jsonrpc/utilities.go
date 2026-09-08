@@ -1,4 +1,4 @@
-package jsonclient
+package jsonrpc
 
 import (
 	"fmt"

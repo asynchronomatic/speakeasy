@@ -9,7 +9,7 @@ import (
 	"github.com/ollama/ollama/api"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -58,7 +58,7 @@ type NodeLoginResponse struct {
 
 type MeshClient struct {
 	meshId    string
-	transport jsonclient.Transport
+	transport jsonrpc.Transport
 
 	mu      sync.Mutex
 	nodeID  string

@@ -18,6 +18,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 type inviteSecret struct {
@@ -81,7 +82,7 @@ func meshNodeKVKey(meshID, nodeID string) string {
 	return "/mesh/" + meshID + "/nodes/" + nodeID
 }
 
-func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
+func (s *Server) adminCreateInviteLink(ctx *jsonrpc.RPC) error {
 	assert.Equal(AdminGroup, ctx.Group())
 
 	req := api.CreateInviteRequest{}
@@ -89,7 +90,7 @@ func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
 		return err
 	}
 	if req.MeshId == "" {
-		return api.NewError(http.StatusBadRequest, "mesh id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "mesh id is required")
 	}
 
 	// FIXME: we only have the default mesh
@@ -128,10 +129,10 @@ func (s *Server) adminCreateInviteLink(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&resp)
 }
 
-func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
+func (s *Server) adminRedeemInviteLink(ctx *jsonrpc.RPC) error {
 	inviteID := ctx.PathVar("id")
 	if inviteID == "" {
-		return api.NewError(http.StatusBadRequest, "invite id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "invite id is required")
 	}
 
 	s.lock.Lock()
@@ -142,14 +143,14 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 	var invite inviteSecret
 	if err := s.kv.Get(key, &invite); err != nil {
 		if errors.Is(err, jsonkv.ErrNotFound) {
-			return api.NewError(http.StatusNotFound, "invite not found")
+			return jsonrpc.NewError(http.StatusNotFound, "invite not found")
 		}
 		return err
 	}
 
 	if invite.Expires != 0 && time.Now().Unix() >= invite.Expires {
 		_ = s.kv.Delete(key)
-		return api.NewError(http.StatusGone, "invite expired")
+		return jsonrpc.NewError(http.StatusGone, "invite expired")
 	}
 
 	req := api.RedeemInviteRequest{}
@@ -157,7 +158,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 		return err
 	}
 	if req.Node.ID == "" {
-		return api.NewError(http.StatusBadRequest, "node peer id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is required")
 	}
 	if req.Node.Name == "" {
 		req.Node.Name = invite.InviteAs
@@ -167,7 +168,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 	var existing meshNodeRecord
 	err := s.kv.Get(nodeKey, &existing)
 	if err == nil {
-		return api.NewError(http.StatusConflict, "node already registered")
+		return jsonrpc.NewError(http.StatusConflict, "node already registered")
 	}
 	if !errors.Is(err, jsonkv.ErrNotFound) {
 		return err
@@ -208,7 +209,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&resp)
 }
 
-func (s *Server) adminListInviteLinks(ctx *JsonRPC) error {
+func (s *Server) adminListInviteLinks(ctx *jsonrpc.RPC) error {
 	assert.Equal(AdminGroup, ctx.Group())
 
 	prefix := "/invites/default/"
@@ -262,7 +263,7 @@ func parseMeshNodeKVKey(key string) (meshID, nodeID string, ok bool) {
 }
 
 // adminListNodes lists nodes stored in the database across every mesh.
-func (s *Server) adminListNodes(ctx *JsonRPC) error {
+func (s *Server) adminListNodes(ctx *jsonrpc.RPC) error {
 	assert.Equal(AdminGroup, ctx.Group())
 
 	nodes := make([]api.AdminNode, 0)
@@ -340,12 +341,12 @@ func (s *Server) meshKeysForNode(id string) ([]string, error) {
 }
 
 // adminDeleteNode removes a node from every mesh in the database and from the allow list.
-func (s *Server) adminDeleteNode(ctx *JsonRPC) error {
+func (s *Server) adminDeleteNode(ctx *jsonrpc.RPC) error {
 	assert.Equal(AdminGroup, ctx.Group())
 
 	id := ctx.PathVar("id")
 	if id == "" {
-		return api.NewError(http.StatusBadRequest, "node id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id is required")
 	}
 
 	keys, err := s.meshKeysForNode(id)
@@ -365,7 +366,7 @@ func (s *Server) adminDeleteNode(ctx *JsonRPC) error {
 	s.acl.Remove(id)
 
 	if len(keys) == 0 && !registered {
-		return api.NewError(http.StatusNotFound, "node not found")
+		return jsonrpc.NewError(http.StatusNotFound, "node not found")
 	}
 	if err := s.deleteNodeCredentials(id); err != nil {
 		return err
@@ -374,16 +375,16 @@ func (s *Server) adminDeleteNode(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&api.DeleteNodeResponse{NodeID: id})
 }
 
-func (s *Server) adminKickPeer(ctx *JsonRPC) error {
+func (s *Server) adminKickPeer(ctx *jsonrpc.RPC) error {
 	return s.adminDeleteNode(ctx)
 }
 
-func (s *Server) adminDeleteInviteLink(ctx *JsonRPC) error {
+func (s *Server) adminDeleteInviteLink(ctx *jsonrpc.RPC) error {
 	assert.Equal(AdminGroup, ctx.Group())
 
 	inviteID := ctx.PathVar("id")
 	if inviteID == "" {
-		return api.NewError(http.StatusBadRequest, "invite id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "invite id is required")
 	}
 
 	// FIXME: we only have the default mesh
@@ -391,7 +392,7 @@ func (s *Server) adminDeleteInviteLink(ctx *JsonRPC) error {
 	var invite inviteSecret
 	if err := s.kv.Get(key, &invite); err != nil {
 		if errors.Is(err, jsonkv.ErrNotFound) {
-			return api.NewError(http.StatusNotFound, "invite not found")
+			return jsonrpc.NewError(http.StatusNotFound, "invite not found")
 		}
 		return err
 	}

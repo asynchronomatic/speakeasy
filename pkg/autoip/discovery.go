@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -52,7 +52,7 @@ func OutboundIP() (string, error) {
 }
 
 func GetPublicAddress() (*AddressDiscovery, error) {
-	client := jsonclient.NewClient(cloudflareRadarURL, "")
+	client := jsonrpc.NewClient(cloudflareRadarURL, "")
 	defer client.Close()
 
 	info := &CloudflareRadar{}

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/exp/maps"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 
 	"github.com/ollama/ollama/api"
@@ -150,7 +150,7 @@ func (e *ModelRouter) openaiFetchModels(provider *core.Provider) (map[string]Mod
 	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
 		return nil, err
 	}
-	client := jsonclient.NewClient(provider.BaseURL, provider.Token).WithDoer(e.httpClient)
+	client := jsonrpc.NewClient(provider.BaseURL, provider.Token).WithDoer(e.httpClient)
 
 	whitelist := make(map[string]ModelRoute)
 	if provider.Discovery == "whitelist" {

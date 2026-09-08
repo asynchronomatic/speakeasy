@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"time"
+
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 const (
@@ -59,19 +61,19 @@ func (p *Proxy) consumeWSTicket(r *http.Request) bool {
 	return !now.After(exp)
 }
 
-func (p *Proxy) refreshTicketHandler(rpc *RPC) error {
+func (p *Proxy) refreshTicketHandler(rpc *jsonrpc.RPC) error {
 	if p.auth != nil {
 		raw, err := p.issueWSTicket()
 		if err != nil {
 			return err
 		}
-		http.SetCookie(rpc.w, &http.Cookie{
+
+		rpc.SetCookie(&http.Cookie{
 			Name:     wsTicketCookie,
 			Value:    raw,
 			Path:     "/api/v.1/refresh/websocket",
 			MaxAge:   int(wsTicketTTL.Seconds()),
 			HttpOnly: true,
-			Secure:   rpc.r.TLS != nil,
 			SameSite: http.SameSiteStrictMode,
 		})
 	}

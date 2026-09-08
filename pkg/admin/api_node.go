@@ -14,22 +14,23 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
 var SessionTokenTTL = 10 * time.Minute
 
-func (s *Server) apiNodeAuthorize(ctx *JsonRPC) error {
+func (s *Server) apiNodeAuthorize(ctx *jsonrpc.RPC) error {
 	var req api.RegisterNodeRequest
 	if err := ctx.GetObject(&req); err != nil {
-		return api.NewError(http.StatusBadRequest, err.Error())
+		return jsonrpc.NewError(http.StatusBadRequest, err.Error())
 	}
 	if req.Node.ID == "" {
-		return api.NewError(http.StatusBadRequest, "node peer id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is required")
 	}
 	// only session node or admin can authorize
 	if req.Node.ID != ctx.User() && ctx.Group() != AdminGroup {
-		return api.NewError(http.StatusBadRequest, "node peer id is bad")
+		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is bad")
 	}
 
 	s.acl.Add(req.Node.ID)
@@ -37,24 +38,24 @@ func (s *Server) apiNodeAuthorize(ctx *JsonRPC) error {
 }
 
 // TODO: nodes need to expire if we have not heard from them in a while
-func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
+func (s *Server) apiNodeRegister(ctx *jsonrpc.RPC) error {
 	var req api.RegisterNodeRequest
 	if err := ctx.GetObject(&req); err != nil {
-		return api.NewError(http.StatusBadRequest, err.Error())
+		return jsonrpc.NewError(http.StatusBadRequest, err.Error())
 	}
 	if req.Node.Name == "" {
-		return api.NewError(http.StatusBadRequest, "node name is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node name is required")
 	}
 	if req.Node.ID == "" {
-		return api.NewError(http.StatusBadRequest, "node peer id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is required")
 	}
 
 	if !s.acl.Has(req.Node.ID) {
-		return api.NewError(http.StatusBadRequest, "node not Authorized")
+		return jsonrpc.NewError(http.StatusBadRequest, "node not Authorized")
 	}
 
 	if req.Node.ID != ctx.User() && ctx.Group() != AdminGroup {
-		return api.NewError(http.StatusBadRequest, "node peer id is bad")
+		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is bad")
 	}
 
 	s.lock.Lock()
@@ -84,24 +85,24 @@ func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&resp)
 }
 
-func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
+func (s *Server) apiNodeRefresh(ctx *jsonrpc.RPC) error {
 	id := ctx.PathVar("id")
 	if id == "" {
-		return api.NewError(http.StatusBadRequest, "node id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id is required")
 	}
 
 	// only the node logged in can perform this action
 	if id != ctx.User() {
-		return api.NewError(http.StatusBadRequest, "invalid node")
+		return jsonrpc.NewError(http.StatusBadRequest, "invalid node")
 	}
 
 	req := api.RegisterNodeRequest{}
 	if err := ctx.GetObject(&req); err != nil {
-		return api.NewError(http.StatusBadRequest, err.Error())
+		return jsonrpc.NewError(http.StatusBadRequest, err.Error())
 	}
 
 	if req.Node.ID != id {
-		return api.NewError(http.StatusBadRequest, "node id mismatch")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id mismatch")
 	}
 
 	updateNode := func(req *api.RegisterNodeRequest) bool {
@@ -135,7 +136,7 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 	s.lock.Unlock()
 
 	if !valid {
-		return api.NewError(http.StatusConflict, "node registration invalid")
+		return jsonrpc.NewError(http.StatusConflict, "node registration invalid")
 	}
 
 	return ctx.ReplyObject(&resp)
@@ -143,15 +144,15 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 
 // apiNodeUnregister does not actually leave the mesh, it just kicks itself of the network and
 // may rejoin later with its given login token
-func (s *Server) apiNodeUnregister(ctx *JsonRPC) error {
+func (s *Server) apiNodeUnregister(ctx *jsonrpc.RPC) error {
 	id := ctx.PathVar("id")
 	if id == "" {
-		return api.NewError(http.StatusBadRequest, "node id is required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id is required")
 	}
 
 	// only the node logged in can Unregister itself
 	if id != ctx.User() && ctx.Group() != AdminGroup {
-		return api.NewError(http.StatusBadRequest, "invalid node")
+		return jsonrpc.NewError(http.StatusBadRequest, "invalid node")
 	}
 
 	s.lock.Lock()
@@ -164,14 +165,14 @@ func (s *Server) apiNodeUnregister(ctx *JsonRPC) error {
 	s.lock.Unlock()
 
 	if !ok {
-		return api.NewError(http.StatusNotFound, "node not found")
+		return jsonrpc.NewError(http.StatusNotFound, "node not found")
 	}
 
 	s.acl.Remove(id)
 	return ctx.ReplyObject(&node)
 }
 
-func (s *Server) apiNodeList(ctx *JsonRPC) error {
+func (s *Server) apiNodeList(ctx *jsonrpc.RPC) error {
 	s.lock.Lock()
 	resp := api.ListNodesResponse{
 		Nodes: make([]api.Node, 0, len(s.nodes)),
@@ -185,7 +186,7 @@ func (s *Server) apiNodeList(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&resp)
 }
 
-func (s *Server) apiRelayGet(ctx *JsonRPC) error {
+func (s *Server) apiRelayGet(ctx *jsonrpc.RPC) error {
 	s.lock.Lock()
 	resp := api.GetRelayResponse{
 		MultiAddress: s.relayAddress,
@@ -254,13 +255,13 @@ func (s *Server) refreshSessionToken(token string) (string, int64, error) {
 	return s.issueSessionToken(claims.NodeID, SessionTokenTTL)
 }
 
-func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
+func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 	var req api.NodeLoginRequest
 	if err := ctx.GetObject(&req); err != nil {
 		return err
 	}
 	if req.NodeID == "" || req.MeshSecret == "" {
-		return api.NewError(http.StatusBadRequest, "node id and mesh secret are required")
+		return jsonrpc.NewError(http.StatusBadRequest, "node id and mesh secret are required")
 	}
 	meshID := req.MeshId
 	if meshID == "" {
@@ -270,12 +271,12 @@ func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 	var rec meshNodeRecord
 	if err := s.kv.Get(meshNodeKVKey(meshID, req.NodeID), &rec); err != nil {
 		if errors.Is(err, jsonkv.ErrNotFound) {
-			return api.NewError(http.StatusUnauthorized, "invalid credentials")
+			return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return err
 	}
 	if rec.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(req.MeshSecret)) != nil {
-		return api.NewError(http.StatusUnauthorized, "invalid credentials")
+		return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 
 	token, expires, err := s.issueSessionToken(req.NodeID, SessionTokenTTL)

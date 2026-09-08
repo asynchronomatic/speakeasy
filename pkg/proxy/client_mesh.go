@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 )
 
 // MeshClient for making api calls across the mesh network
 type MeshClient struct {
 	address string
-	client  jsonclient.Doer
+	client  jsonrpc.Doer
 }
 
 type MeshListModelsResponse struct {
@@ -22,7 +22,7 @@ type MeshListModelsResponse struct {
 func (c *MeshClient) GetModelsMesh() (map[string]modeldex.ModelRoute, error) {
 	resp := MeshListModelsResponse{}
 
-	jc := jsonclient.NewClient(fmt.Sprintf("http://%s.mesh", c.address), "").WithDoer(c.client)
+	jc := jsonrpc.NewClient(fmt.Sprintf("http://%s.mesh", c.address), "").WithDoer(c.client)
 	err := jc.Get("/.mesh/models", &resp)
 	if err != nil {
 		return nil, err
@@ -53,14 +53,14 @@ type NodeStatusResponse struct {
 func (c *MeshClient) GetMeshStatus() (NodeStatus, error) {
 	resp := NodeStatusResponse{}
 
-	jc := jsonclient.NewClient(fmt.Sprintf("http://%s.mesh", c.address), "").WithDoer(c.client)
+	jc := jsonrpc.NewClient(fmt.Sprintf("http://%s.mesh", c.address), "").WithDoer(c.client)
 	err := jc.Get("/.mesh/status", &resp)
 	return resp.Status, err
 }
 
 // NewMeshClient creates a client to the ollama interface wrapping the api into our model format
 // this client can also use a custom http.Client which is connected over our peer network
-func NewMeshClient(address string, client jsonclient.Doer) *MeshClient {
+func NewMeshClient(address string, client jsonrpc.Doer) *MeshClient {
 	c := &MeshClient{
 		address: address,
 		client:  client,

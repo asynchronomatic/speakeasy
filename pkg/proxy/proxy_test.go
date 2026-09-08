@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -83,17 +85,22 @@ func TestNewProxy(t *testing.T) {
 	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
+	proxyLeft.WithAdminToken(ProxyLoginToken)
 
 	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
+	proxyRight.WithAdminToken(ProxyLoginToken)
 
 	go func() {
 		_ = core.RunInterruptibleContext(context.Background(), proxyLeft, proxyRight)
 	}()
 
 	client := NewProxyClient("proxy.left", &testable.Doer{
-		Handler: proxyLeft.ServeHTTP,
+		Handler: func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
+			proxyLeft.ServeHTTP(w, r)
+		},
 	})
 
 	// Wait for both nodes to come online

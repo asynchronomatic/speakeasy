@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -25,16 +25,25 @@ func (p *Proxy) meshStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(&resp)
 }
 
+// meshModels is called by a peer node to get this nodes exported(local) models
+func (p *Proxy) meshModels(w http.ResponseWriter, r *http.Request) {
+	resp := MeshListModelsResponse{
+		Models: p.modelRouter.ListExportedModels(),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(&resp)
+}
+
 type MeshMembersResponse struct {
 	Nodes []NodeStatus
 }
 
-func (p *Proxy) meshMembers(rpc *RPC) error {
+func (p *Proxy) meshMembers(rpc *jsonrpc.RPC) error {
 	resp := MeshMembersResponse{}
 
 	peers, err := p.mesh.GetPeerMap()
 	if err != nil {
-		return api.NewError(http.StatusInternalServerError, err.Error())
+		return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
 	}
 
 	for _, peer := range peers {
@@ -72,13 +81,4 @@ func (p *Proxy) meshMembers(rpc *RPC) error {
 	}
 
 	return rpc.ReplyObject(&resp)
-}
-
-// meshModels is called byt a peer node to get this nodes exported(local) models
-func (p *Proxy) meshModels(w http.ResponseWriter, r *http.Request) {
-	resp := MeshListModelsResponse{
-		Models: p.modelRouter.ListExportedModels(),
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(&resp)
 }
