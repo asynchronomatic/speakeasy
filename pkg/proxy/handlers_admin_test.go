@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -40,6 +41,32 @@ func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Re
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
 	return rec.Result()
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	p := testProxy(t)
+	req := httptest.NewRequest(http.MethodGet, "/ui/", nil)
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	res := rec.Result()
+	defer res.Body.Close()
+	if got := res.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options %q", got)
+	}
+	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options %q", got)
+	}
+	csp := res.Header.Get("Content-Security-Policy")
+	for _, want := range []string{
+		"default-src 'self'",
+		"frame-ancestors 'none'",
+		"https://fonts.googleapis.com",
+		"https://fonts.gstatic.com",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP missing %q in %q", want, csp)
+		}
+	}
 }
 
 func TestAuthRequiredOff(t *testing.T) {

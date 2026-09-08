@@ -144,6 +144,9 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonclient.D
 }
 
 func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *http.Request) {
+	// strip headers we cannot pass down stream
+	delete(r.Header, "Origin")
+
 	stream, err := m.NewStream(destNode.ID, true, OllamaProtocol)
 	if err != nil {
 		log.Printf("could not contact peer: %s err:%v", destNode, err)

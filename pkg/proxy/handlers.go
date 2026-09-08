@@ -9,6 +9,23 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
+const contentSecurityPolicy = "default-src 'self'; frame-ancestors 'none'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
+}
+
+func publicPath(path string) bool {
+	switch path {
+	case "/", "/ui", "/favicon.ico", "/api/mesh/auth":
+		return true
+	}
+	return strings.HasPrefix(path, "/ui/")
+}
+
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	host := r.Header.Get("x-forwarded-for")
 	if host == "" {

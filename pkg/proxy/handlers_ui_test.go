@@ -38,7 +38,7 @@ func TestUIStaticAssets(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	for _, path := range []string{"/ui/", "/ui/css/styles.css", "/ui/js/app.js", "/ui/favicon.ico", "/ui/favicon.svg"} {
+	for _, path := range []string{"/ui/", "/ui/css/styles.css", "/ui/js/app.js", "/ui/js/theme-boot.js", "/ui/favicon.ico", "/ui/favicon.svg"} {
 		res, err := http.Get(srv.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)

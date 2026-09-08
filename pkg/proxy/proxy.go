@@ -100,10 +100,11 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	// Always try local routes first
 	local := route.GetLocalRouteProtected(isFromMesh)
 	if local != nil {
-		log.WithName("proxy").Debugf(" -- Servicing via provider: %s\n", local.BaseURL)
+		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model, r.URL.Path)
 
 		u, err := url.Parse(local.BaseURL)
 		if err != nil {
+			log.WithName("proxy").Errorf("failed to parse local provider URL: %v", err)
 			writeModelNotFound(w, r, model)
 			return
 		}
@@ -113,10 +114,14 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 		proxy.Director = func(req *http.Request) {
 			orig(req)
 			req.Host = u.Host
-			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 			if local.Token != "" {
 				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
+			} else {
+				// prune bad authorization
+				delete(req.Header, "Authorization")
 			}
+			delete(req.Header, "Origin") // also remove origin
+
 		}
 		proxy.ServeHTTP(w, r)
 		return
@@ -185,21 +190,26 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	return nil
 }
 
+func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
+	p.proxyModelRequest(w, r, false)
+}
+
+func (p *Proxy) meshProxyRequest(w http.ResponseWriter, r *http.Request) {
+	p.proxyModelRequest(w, r, true)
+}
+
 // ServeHTTP serves an Open AI compatible api for chat completions
 // this handler is exposed to all local clients that want to use for access
 // to local and remote models.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cid := atomic.AddUint64(&p.cid, 1)
 	start := time.Now()
+	cid := atomic.AddUint64(&p.cid, 1)
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	switch {
-	case slices.Contains(proxyHandleURLS, r.URL.Path):
-		p.proxyModelRequest(w, r, false)
-	default: // serves from our local table
-		p.mux.ServeHTTP(w, r)
-	}
-	log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+
+	setSecurityHeaders(w)
+	p.mux.ServeHTTP(w, r)
 }
 
 // MeshServeHTTP serves only our local models, it is used as an entry point for our p2p peers when they ask for
@@ -210,13 +220,9 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (mesh:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	switch {
-	case slices.Contains(proxyHandleURLS, r.URL.Path): // pivots on model
-		p.proxyModelRequest(w, r, true)
-	default: // serves from our local table
-		p.meshMux.ServeHTTP(w, r)
-	}
-	log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+
+	p.meshMux.ServeHTTP(w, r)
 }
 
 func (p *Proxy) Serve(ctx context.Context) error {
@@ -264,7 +270,6 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 
 func (p *Proxy) WithAuthToken(token string) {
 	if token != "" {
-
 		p.auth = auth.NewTokenAuth()
 		p.auth.AddToken(token, auth.AdminUser, auth.AdminGroup)
 		log.WithName("proxy").Warnf("Enabling Token Authentication (Token Configured)")
@@ -291,6 +296,10 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	// routes serviced over the mesh
 	p.meshMux.HandleFunc("GET /.mesh/status", p.meshStatus)
 	p.meshMux.HandleFunc("GET /.mesh/models", p.meshModels)
+	p.meshMux.HandleFunc("/v1/chat/completions", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/responses", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/embeddings", p.meshProxyRequest)
+	p.meshMux.HandleFunc("/v1/messages", p.meshProxyRequest) // anthropic
 
 	//-------------------------------------------
 	// Routes accessible locally
@@ -300,6 +309,10 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 
 	// OpenAI APIs
 	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
+	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
+	p.mux.HandleFunc("/v1/messages", p.localProxyRequest) // anthropic
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))

@@ -8,17 +8,7 @@
   <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <script>
-    (function () {
-      try {
-        var allowed = { night: 1, deco: 1, cyber: 1, clean: 1 };
-        var t = localStorage.getItem("speakeasy-theme") || "deco";
-        document.documentElement.setAttribute("data-theme", allowed[t] ? t : "deco");
-      } catch (e) {
-        document.documentElement.setAttribute("data-theme", "deco");
-      }
-    })();
-  </script>
+  <script src="/ui/js/theme-boot.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Josefin+Sans:wght@400;500;600;700&family=Orbitron:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/ui/css/styles.css">
 </head>

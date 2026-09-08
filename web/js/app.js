@@ -931,15 +931,10 @@
     return !!(m && (m.providers || []).some((p) => providerIsSelf(p)));
   }
 
-  function chatModelValue(name) {
-    return modelOnThisNode(name) ? name : MESH_MODEL_PREFIX + name;
-  }
-
   function updateChatPrivacy() {
     const box = el.chatPrivacy;
     if (!box) return;
-    const value = el.chatModel.value;
-    const name = bareModelName(value);
+    const name = bareModelName(el.chatModel.value);
     if (!name || modelOnThisNode(name)) {
       box.hidden = true;
       box.classList.add("hidden");
@@ -953,27 +948,23 @@
     const where = hosts.length ? hosts.join(", ") : "another mesh node";
     box.hidden = false;
     box.classList.remove("hidden");
-    box.innerHTML = `<strong>Not on this node.</strong> ${escapeHTML(MESH_MODEL_PREFIX + name)} is served by ${escapeHTML(where)}. Prompts and replies travel over the mesh — this conversation is not private.`;
+    box.innerHTML = `<strong>Not on this node.</strong> ${escapeHTML(name)} is served by ${escapeHTML(where)}. Prompts and replies travel over the mesh — this conversation is not private.`;
   }
 
   function syncChatModels() {
     const names = modelNames();
-    const values = names.map(chatModelValue);
-    const current = el.chatModel.value || state.chat.model;
+    const current = bareModelName(el.chatModel.value || state.chat.model);
     el.chatModel.innerHTML = names.length
       ? names
           .map((n) => {
-            const value = chatModelValue(n);
             const m = findModel(n);
-            const label = m && m.private ? `${value} (private)` : value;
-            return `<option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`;
+            const label = m && m.private ? `${n} (private)` : n;
+            return `<option value="${escapeHTML(n)}">${escapeHTML(label)}</option>`;
           })
           .join("")
       : `<option value="">No models available</option>`;
-    if (current && values.includes(current)) el.chatModel.value = current;
-    else if (current && values.includes(chatModelValue(bareModelName(current)))) {
-      el.chatModel.value = chatModelValue(bareModelName(current));
-    } else if (values.length) el.chatModel.value = values[0];
+    if (current && names.includes(current)) el.chatModel.value = current;
+    else if (names.length) el.chatModel.value = names[0];
     state.chat.model = el.chatModel.value;
     updateChatControls();
     updateChatPrivacy();
@@ -1089,7 +1080,7 @@
     state.chat.messages.push({
       role: "assistant",
       content: "",
-      model: el.chatModel.value,
+      model: model,
     });
     state.chat.busy = true;
     const assistant = state.chat.messages[state.chat.messages.length - 1];
