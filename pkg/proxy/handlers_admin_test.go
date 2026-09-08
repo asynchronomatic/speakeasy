@@ -42,6 +42,67 @@ func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Re
 	return rec.Result()
 }
 
+func TestAuthRequiredOff(t *testing.T) {
+	p := testProxy(t)
+	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/auth", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	var got struct {
+		Required bool `json:"required"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Required {
+		t.Fatal("expected required=false")
+	}
+}
+
+func TestAuthRequiredOn(t *testing.T) {
+	p := testProxy(t)
+	p.WithAuthToken("sekrit")
+
+	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/auth", nil)
+	if res.StatusCode != http.StatusOK {
+		res.Body.Close()
+		t.Fatalf("auth status %d", res.StatusCode)
+	}
+	var got struct {
+		Required bool `json:"required"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if !got.Required {
+		t.Fatal("expected required=true")
+	}
+
+	res = doProxyJSON(t, p, http.MethodGet, "/api/mesh/models", nil)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("models without token %d want 401", res.StatusCode)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/mesh/models", nil)
+	req.Header.Set("Authorization", "Bearer sekrit")
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("models with token %d want 200", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
+	rec = httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("ws without token %d want 401", rec.Code)
+	}
+}
+
 func TestAdminEnabledOff(t *testing.T) {
 	p := testProxy(t)
 	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)

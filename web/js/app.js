@@ -1,6 +1,7 @@
 (() => {
   const REFRESH_WS_PATH = "/api/v.1/refresh/websocket";
   const THEME_KEY = "speakeasy-theme";
+  const AUTH_KEY = "speakeasy-proxy-token";
 
   const state = {
     view: "welcome",
@@ -9,6 +10,9 @@
     filter: "",
     nodesFilter: "",
     error: null,
+    authRequired: false,
+    proxyToken: "",
+    appStarted: false,
     adminEnabled: false,
     invites: [],
     adminNodes: [],
@@ -92,6 +96,10 @@
     adminCopy: document.getElementById("admin-invite-copy"),
     adminInvitesBody: document.getElementById("admin-invites-body"),
     adminNodesBody: document.getElementById("admin-nodes-body"),
+    loginOverlay: document.getElementById("login-overlay"),
+    loginForm: document.getElementById("login-form"),
+    loginPassword: document.getElementById("login-password"),
+    loginError: document.getElementById("login-error"),
   };
 
   function setStatus(kind, label) {
@@ -164,8 +172,53 @@
     }
   }
 
+  function authHeaders(extra) {
+    const headers = Object.assign({ Accept: "application/json" }, extra || {});
+    if (state.proxyToken) headers.Authorization = "Bearer " + state.proxyToken;
+    return headers;
+  }
+
+  function setProxyToken(token) {
+    state.proxyToken = String(token || "");
+    try {
+      if (state.proxyToken) sessionStorage.setItem(AUTH_KEY, state.proxyToken);
+      else sessionStorage.removeItem(AUTH_KEY);
+    } catch (_) {}
+  }
+
+  function loadStoredToken() {
+    try {
+      return sessionStorage.getItem(AUTH_KEY) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function showLoginOverlay() {
+    if (!el.loginOverlay) return;
+    el.loginOverlay.hidden = false;
+    el.loginOverlay.classList.remove("hidden");
+    setErrorEl(el.loginError, "");
+    if (el.loginPassword) {
+      el.loginPassword.value = "";
+      el.loginPassword.focus();
+    }
+  }
+
+  function hideLoginOverlay() {
+    if (!el.loginOverlay) return;
+    el.loginOverlay.hidden = true;
+    el.loginOverlay.classList.add("hidden");
+    setErrorEl(el.loginError, "");
+  }
+
   async function getJSON(path) {
-    const res = await fetch(path, { headers: { Accept: "application/json" } });
+    const res = await fetch(path, { headers: authHeaders() });
+    if (res.status === 401 && state.authRequired) {
+      setProxyToken("");
+      showLoginOverlay();
+      throw new Error("unauthorized");
+    }
     if (!res.ok) {
       throw new Error(`${path}: ${res.status} ${res.statusText}`);
     }
@@ -175,9 +228,14 @@
   async function sendJSON(path, method, body) {
     const res = await fetch(path, {
       method,
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: body == null ? undefined : JSON.stringify(body),
     });
+    if (res.status === 401 && state.authRequired) {
+      setProxyToken("");
+      showLoginOverlay();
+      throw new Error("unauthorized");
+    }
     if (!res.ok) {
       const text = (await res.text()).trim();
       throw new Error(text || `${path}: ${res.status} ${res.statusText}`);
@@ -185,6 +243,73 @@
     const ct = res.headers.get("content-type") || "";
     if (!ct.includes("application/json")) return null;
     return res.json();
+  }
+
+  async function authRequired() {
+    const res = await fetch("/api/mesh/auth", { headers: { Accept: "application/json" } });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!(data && (data.required || data.Required));
+  }
+
+  async function verifyProxyToken() {
+    const res = await fetch("/api/mesh/models", { headers: authHeaders() });
+    return res.ok;
+  }
+
+  function startApp() {
+    if (state.appStarted) return;
+    state.appStarted = true;
+    hideLoginOverlay();
+    loadTheme();
+    refresh();
+    connectRefreshSocket();
+  }
+
+  async function bootAuth() {
+    try {
+      state.authRequired = await authRequired();
+    } catch (_) {
+      state.authRequired = false;
+    }
+    if (!state.authRequired) {
+      startApp();
+      return;
+    }
+    const stored = loadStoredToken();
+    if (stored) {
+      setProxyToken(stored);
+      try {
+        if (await verifyProxyToken()) {
+          startApp();
+          return;
+        }
+      } catch (_) {}
+      setProxyToken("");
+    }
+    showLoginOverlay();
+  }
+
+  async function submitLogin(e) {
+    e.preventDefault();
+    const password = (el.loginPassword && el.loginPassword.value) || "";
+    setErrorEl(el.loginError, "");
+    const submit = document.getElementById("login-submit");
+    if (submit) submit.disabled = true;
+    setProxyToken(password.trim());
+    try {
+      if (!(await verifyProxyToken())) {
+        setProxyToken("");
+        setErrorEl(el.loginError, "Invalid password");
+        return;
+      }
+      startApp();
+    } catch (err) {
+      setProxyToken("");
+      setErrorEl(el.loginError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
+    }
   }
 
   function escapeHTML(s) {
@@ -982,7 +1107,7 @@
     try {
       const res = await fetch("/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           model,
           messages: apiMessages,
@@ -1718,7 +1843,9 @@
 
   function refreshSocketURL() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return proto + "//" + window.location.host + REFRESH_WS_PATH;
+    let url = proto + "//" + window.location.host + REFRESH_WS_PATH;
+    if (state.proxyToken) url += "?access_token=" + encodeURIComponent(state.proxyToken);
+    return url;
   }
 
   function connectRefreshSocket() {
@@ -1768,7 +1895,9 @@
     el.debugToggle.addEventListener("change", () => saveDebug());
   }
   applyTheme(currentTheme());
-  loadTheme();
+  if (el.loginForm) {
+    el.loginForm.addEventListener("submit", submitLogin);
+  }
   if (el.adminEnableForm) {
     el.adminEnableForm.addEventListener("submit", enableAdmin);
   }
@@ -1937,6 +2066,5 @@
   renderWelcome();
   renderChatThread();
   updateChatControls();
-  refresh();
-  connectRefreshSocket();
+  bootAuth();
 })();

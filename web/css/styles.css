@@ -856,6 +856,23 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
   margin: 0 0 12px;
 }
 
+#login-overlay {
+  z-index: 200;
+}
+
+#login-overlay .admin-field {
+  width: 100%;
+  margin: 14px 0 0;
+}
+
+#login-overlay .admin-field input {
+  width: 100%;
+}
+
+#login-overlay .muted {
+  margin: 0;
+}
+
 .admin-enable-form {
   display: flex;
   flex-direction: column;

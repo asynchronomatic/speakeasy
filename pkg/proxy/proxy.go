@@ -302,6 +302,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
+	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(p.uiModelsHandler))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(p.meshMembers))
 	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(p.debugGetHandler))
@@ -331,7 +332,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 		http.FileServer(uiFileSystem()).ServeHTTP(w, r)
 	})
 
-	p.mux.HandleFunc("/api/v.1/refresh/websocket", p.notifier.Handle)
+	p.mux.HandleFunc("/api/v.1/refresh/websocket", p.refreshWebsocketHandler)
 
 	p.mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServer(uiFileSystem())))
 

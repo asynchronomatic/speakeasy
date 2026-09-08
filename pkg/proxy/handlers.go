@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -77,6 +78,27 @@ func (p *Proxy) authenticated(fn func(*RPC) error) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+func (p *Proxy) authRequiredHandler(rpc *RPC) error {
+	return rpc.ReplyObject(&struct {
+		Required bool `json:"required"`
+	}{Required: p.auth != nil})
+}
+
+func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) {
+	if p.auth != nil {
+		if r.Header.Get("Authorization") == "" {
+			if tok := strings.TrimSpace(r.URL.Query().Get("access_token")); tok != "" {
+				r.Header.Set("Authorization", "Bearer "+tok)
+			}
+		}
+		if _, code := p.auth.DoAuth(w, r); code != http.StatusOK {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+	p.notifier.Handle(w, r)
 }
 
 func (p *Proxy) withAdmin(fn func(*RPC) error) func(*RPC) error {
