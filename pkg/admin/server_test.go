@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -22,6 +23,39 @@ func testNewServer(t *testing.T, addr, secret string) *Server {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+func TestAdminSecurityHeaders(t *testing.T) {
+	s := testNewServer(t, ":0", "test-secret")
+	ts := httptest.NewUnstartedServer(s.routes())
+	ts.Config.SetKeepAlivesEnabled(false)
+	ts.Start()
+	t.Cleanup(func() {
+		ts.Close()
+		closeIdleHTTP()
+	})
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	res, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if got := res.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options %q", got)
+	}
+	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options %q", got)
+	}
+	if got := res.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy %q", got)
+	}
+	csp := res.Header.Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'self'", "base-uri 'none'", "form-action 'self'", "script-src 'self'"} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP missing %q in %q", want, csp)
+		}
+	}
 }
 
 func TestAdminRequiresAuth(t *testing.T) {

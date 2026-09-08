@@ -12,16 +12,6 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
-const contentSecurityPolicy = "default-src 'self'; frame-ancestors 'none'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
-
-// TODO: move to security
-func setSecurityHeaders(w http.ResponseWriter) {
-	h := w.Header()
-	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("X-Frame-Options", "DENY")
-	h.Set("Content-Security-Policy", contentSecurityPolicy)
-}
-
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	host := r.Header.Get("x-forwarded-for")
 	if host == "" {

@@ -17,6 +17,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 
 	"github.com/asynchronomatic/speakeasy/api"
 )
@@ -62,12 +63,12 @@ func OutboundIP() (string, error) {
 	return udpAddr.IP.String(), nil
 }
 
-// only allow the admin user in
-
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	// login
 	mux.HandleFunc("POST /api/v1/login", s.handle(s.apiNodeLogin))
 
+	// authenticated:
 	mux.HandleFunc("GET /api/v1/relay", s.authenticated(s.apiRelayGet))
 	mux.HandleFunc("POST /api/v1/authorize", s.authenticated(s.apiNodeAuthorize))
 	mux.HandleFunc("POST /api/v1/nodes", s.authenticated(s.apiNodeRegister))
@@ -75,6 +76,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/nodes/{id}", s.authenticated(s.apiNodeRefresh))
 	mux.HandleFunc("GET /api/v1/nodes", s.authenticated(s.apiNodeList))
 
+	// admin: only
 	mux.HandleFunc("GET /api/v1/admin/nodes", s.authenticated(jsonrpc.AsAdmin(s.adminListNodes)))
 	mux.HandleFunc("DELETE /api/v1/admin/nodes/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteNode)))
 	mux.HandleFunc("POST /api/v1/admin/nodes/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteNode)))
@@ -84,11 +86,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/admin/invite/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteInviteLink)))
 	mux.HandleFunc("DELETE /api/v1/admin/peer/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminKickPeer)))
 
-	// redeem is public since it's getting a magic link
+	// public: redeem is public since it's getting a magic link
 	mux.HandleFunc("POST /api/v1/redeem/{id}", s.handle(s.adminRedeemInviteLink))
 
 	mux.HandleFunc("/", notFoundHandler)
-	return mux
+	return security.Handler(mux)
 }
 
 func (s *Server) Listen() error {
