@@ -25,10 +25,16 @@ func testNewServer(t *testing.T, addr, secret string) *Server {
 
 func TestAdminRequiresAuth(t *testing.T) {
 	s := testNewServer(t, ":0", "test-secret")
-	ts := httptest.NewServer(s.routes())
-	t.Cleanup(ts.Close)
+	ts := httptest.NewUnstartedServer(s.routes())
+	ts.Config.SetKeepAlivesEnabled(false)
+	ts.Start()
+	t.Cleanup(func() {
+		ts.Close()
+		closeIdleHTTP()
+	})
 
-	res, err := http.Get(ts.URL + "/api/v1/nodes")
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	res, err := testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,9 +43,9 @@ func TestAdminRequiresAuth(t *testing.T) {
 		t.Fatalf("unauthenticated GET /nodes: got %d", res.StatusCode)
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
 	req.Header.Set("Authorization", "Bearer test-secret")
-	res, err = http.DefaultClient.Do(req)
+	res, err = testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,14 +96,19 @@ func TestAdminDBPathDefault(t *testing.T) {
 
 func TestAdminBearerAuthAndRegister(t *testing.T) {
 	s := testNewServer(t, ":0", "test-secret")
-	ts := httptest.NewServer(s.routes())
-	t.Cleanup(ts.Close)
+	ts := httptest.NewUnstartedServer(s.routes())
+	ts.Config.SetKeepAlivesEnabled(false)
+	ts.Start()
+	t.Cleanup(func() {
+		ts.Close()
+		closeIdleHTTP()
+	})
 
 	body, _ := json.Marshal(api.RegisterNodeRequest{Node: api.Node{Name: "n1", ID: "peer-1"}})
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/authorize", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer test-secret")
 	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
+	res, err := testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +120,7 @@ func TestAdminBearerAuthAndRegister(t *testing.T) {
 	req, _ = http.NewRequest(http.MethodPost, ts.URL+"/api/v1/nodes", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer test-secret")
 	req.Header.Set("Content-Type", "application/json")
-	res, err = http.DefaultClient.Do(req)
+	res, err = testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
