@@ -27,11 +27,11 @@ run-hybrid:
 
 
 test:
-	go test github.com/asynchronomatic/speakeasy/...
+	go test -tags assert github.com/asynchronomatic/speakeasy/...
 .PHONY: test
 
 test-verbose:
-	go test -v github.com/asynchronomatic/speakeasy/...
+	go test -v -tags assert github.com/asynchronomatic/speakeasy/...
 .PHONY: test-verbose
 
 

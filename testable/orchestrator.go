@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -44,7 +44,7 @@ func (t *MeshOrchestrator) Disconnect(mn *MeshNode) error {
 	return nil
 }
 
-func (t *MeshOrchestrator) ClientForPeer(dest core.PeerNode, longLived bool) jsonclient.Doer {
+func (t *MeshOrchestrator) ClientForPeer(dest core.PeerNode, longLived bool) jsonrpc.Doer {
 	t.lock.Lock()
 	node, ok := t.nodes[dest.ID]
 	t.lock.Unlock()

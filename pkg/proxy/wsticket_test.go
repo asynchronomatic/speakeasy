@@ -14,7 +14,7 @@ import (
 
 func TestRefreshTicketRequiresAuth(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/refresh/ticket", map[string]any{})
 	res.Body.Close()
 	if res.StatusCode != http.StatusUnauthorized {
@@ -24,7 +24,7 @@ func TestRefreshTicketRequiresAuth(t *testing.T) {
 
 func TestRefreshTicketSetsCookie(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/refresh/ticket", strings.NewReader("{}"))
 	req.Header.Set("Authorization", "Bearer sekrit")
 	req.Header.Set("Content-Type", "application/json")
@@ -60,7 +60,7 @@ func TestRefreshTicketSetsCookie(t *testing.T) {
 
 func TestWebsocketQueryTokenRejected(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	req := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket?access_token=sekrit", nil)
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
@@ -71,7 +71,7 @@ func TestWebsocketQueryTokenRejected(t *testing.T) {
 
 func TestWebsocketUpgradeWithTicket(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	go p.notifier.Poll()
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
@@ -119,7 +119,7 @@ func TestWebsocketUpgradeWithTicket(t *testing.T) {
 
 func TestWebsocketUpgradeWithBearer(t *testing.T) {
 	p := testProxy(t)
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	go p.notifier.Poll()
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
@@ -147,7 +147,7 @@ func TestWSTicketExpires(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
 	req.AddCookie(&http.Cookie{Name: wsTicketCookie, Value: raw})
 	rec := httptest.NewRecorder()
-	p.WithAuthToken("sekrit")
+	p.WithAdminToken("sekrit")
 	p.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expired ticket status %d", rec.Code)

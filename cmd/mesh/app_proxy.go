@@ -20,7 +20,7 @@ func runProxy(config *core.Config) error {
 	attachAdminController(p, config)
 
 	if config.Proxy.Password != "" {
-		p.WithAuthToken(config.Proxy.Password)
+		p.WithAdminToken(config.Proxy.Password)
 	}
 
 	return core.RunInterruptible(p)

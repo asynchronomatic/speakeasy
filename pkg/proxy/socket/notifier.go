@@ -7,7 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 var upgrader = websocket.Upgrader{
@@ -21,7 +21,7 @@ func allowUpgrade(r *http.Request) bool {
 	if site == "cross-site" || site == "nested-cross-origin" {
 		return false
 	}
-	return api.OriginOK(r)
+	return security.OriginOK(r)
 }
 
 type Notifier struct {

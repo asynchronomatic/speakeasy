@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -322,7 +323,9 @@ func TestProviderUpdateMissing(t *testing.T) {
 func TestProviderRejectsNonJSONContentType(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
+
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
 	req.Header.Set("Content-Type", "text/plain")
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
@@ -336,6 +339,7 @@ func TestProviderRejectsCrossOrigin(t *testing.T) {
 	p := testProxy(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
 	req.Host = "127.0.0.1:4080"
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://evil.example")
 	rec := httptest.NewRecorder()

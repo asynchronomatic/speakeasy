@@ -1,12 +1,12 @@
 package api
 
 import (
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 // Client allows for access to the relay control server for managing mes ACLs
 type Client struct {
-	transport jsonclient.Transport
+	transport jsonrpc.Transport
 }
 
 // Authorize this client for access to the mesh
@@ -55,7 +55,7 @@ func (c *Client) Mesh(meshId string) (*MeshClient, error) {
 
 // NewClient creates a new client for interacting with the mesh relay control server
 func NewClient(address, token string) *Client {
-	transport := jsonclient.NewClient(address, token)
+	transport := jsonrpc.NewClient(address, token)
 	c := &Client{
 		transport: transport,
 	}

@@ -4,12 +4,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/negrel/assert"
+
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 const contentSecurityPolicy = "default-src 'self'; frame-ancestors 'none'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
 
+// TODO: move to security
 func setSecurityHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -30,14 +35,14 @@ func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
 }
 
-func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
+func (p *Proxy) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() {
 			p.logRequest(r, "--", start)
 		}()
 
-		if err := api.RequireSameOrigin(r); err != nil {
+		if err := security.RequireSameOrigin(r); err != nil {
 			if ce, ok := err.(*api.Error); ok {
 				http.Error(w, ce.Message(), ce.Code())
 			} else {
@@ -46,7 +51,7 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 			return
 		}
 
-		rpc := &RPC{w: w, r: r}
+		rpc := jsonrpc.NewRPC(w, r)
 		if err := fn(rpc); err != nil {
 			if ce, ok := err.(*api.Error); ok {
 				rpc.Error(ce.Code(), ce.Message())
@@ -57,38 +62,42 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 	}
 }
 
-func (p *Proxy) authenticated(fn func(*RPC) error) http.HandlerFunc {
+func (p *Proxy) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		assert.NotNil(p.auth)
+
 		start := time.Now()
 		defer func() {
 			p.logRequest(r, "--", start)
 		}()
 
-		if err := api.RequireSameOrigin(r); err != nil {
-			api.RejectSameOrigin(w, err)
+		if err := security.RequireSameOrigin(r); err != nil {
+			security.RejectSameOrigin(w, err)
 			return
 		}
 
-		if p.auth != nil {
-			_, code := p.auth.DoAuth(w, r)
-			if code != http.StatusOK {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
+		user, code := p.auth.DoAuth(w, r)
+		if code != http.StatusOK {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
 
-		ctx := &RPC{w: w, r: r}
-		if err := fn(ctx); err != nil {
-			if ce, ok := err.(*api.Error); ok {
-				ctx.Error(ce.Code(), ce.Message())
+		rpc := jsonrpc.NewRPC(w, r).WithProps(jsonrpc.Properties{
+			User:  user.User,
+			Group: user.Group,
+		})
+
+		if err := fn(rpc); err != nil {
+			if ce, ok := err.(*jsonrpc.Error); ok {
+				_ = rpc.Error(ce.Code(), ce.Message())
 			} else {
-				ctx.Error(http.StatusInternalServerError, err.Error())
+				_ = rpc.Error(http.StatusInternalServerError, err.Error())
 			}
 		}
 	}
 }
 
-func (p *Proxy) authRequiredHandler(rpc *RPC) error {
+func (p *Proxy) authRequiredHandler(rpc *jsonrpc.RPC) error {
 	return rpc.ReplyObject(&struct {
 		Required bool `json:"required"`
 	}{Required: p.auth != nil})
@@ -106,10 +115,10 @@ func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) 
 	p.notifier.Handle(w, r)
 }
 
-func (p *Proxy) withAdmin(fn func(*RPC) error) func(*RPC) error {
-	return func(rpc *RPC) error {
+func (p *Proxy) withAdmin(fn func(*jsonrpc.RPC) error) func(*jsonrpc.RPC) error {
+	return func(rpc *jsonrpc.RPC) error {
 		if p.admin == nil {
-			return api.NewError(http.StatusServiceUnavailable, "admin not enabled")
+			return jsonrpc.NewError(http.StatusServiceUnavailable, "admin not enabled")
 		}
 		return fn(rpc)
 	}

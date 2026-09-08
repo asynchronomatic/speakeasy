@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 )
 
@@ -13,7 +14,7 @@ import (
 type OpenaiModel = modeldex.OpenaiModel
 type OpenaiModelList = modeldex.OpenaiModelList
 
-func (p *Proxy) openaiListModelsHandler(rpc *RPC) error {
+func (p *Proxy) openaiListModelsHandler(rpc *jsonrpc.RPC) error {
 	resp := &OpenaiModelList{
 		Object: "list",
 	}

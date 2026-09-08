@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 type AdminClient struct {
-	transport jsonclient.Transport
+	transport jsonrpc.Transport
 }
 
 // DefaultInviteLifetimeSec is applied when LifetimeSec is 0 and Forever is false.

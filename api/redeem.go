@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
 func parseInviteURL(raw string) (*url.URL, error) {
@@ -49,7 +49,7 @@ func RedeemInvite(inviteURL string, node Node) (*RedeemInviteResponse, error) {
 	}
 
 	var resp RedeemInviteResponse
-	c := jsonclient.NewClient(base, "")
+	c := jsonrpc.NewClient(base, "")
 	if err := c.Post(path, RedeemInviteRequest{Node: node}, &resp); err != nil {
 		return nil, err
 	}

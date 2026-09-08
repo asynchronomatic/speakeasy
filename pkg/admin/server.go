@@ -15,6 +15,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -74,14 +75,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/nodes/{id}", s.authenticated(s.apiNodeRefresh))
 	mux.HandleFunc("GET /api/v1/nodes", s.authenticated(s.apiNodeList))
 
-	mux.HandleFunc("GET /api/v1/admin/nodes", s.authenticated(s.asAdmin(s.adminListNodes)))
-	mux.HandleFunc("DELETE /api/v1/admin/nodes/{id}", s.authenticated(s.asAdmin(s.adminDeleteNode)))
-	mux.HandleFunc("POST /api/v1/admin/nodes/{id}", s.authenticated(s.asAdmin(s.adminDeleteNode)))
+	mux.HandleFunc("GET /api/v1/admin/nodes", s.authenticated(jsonrpc.AsAdmin(s.adminListNodes)))
+	mux.HandleFunc("DELETE /api/v1/admin/nodes/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteNode)))
+	mux.HandleFunc("POST /api/v1/admin/nodes/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteNode)))
 
-	mux.HandleFunc("POST /api/v1/admin/invite", s.authenticated(s.asAdmin(s.adminCreateInviteLink)))
-	mux.HandleFunc("GET /api/v1/admin/invite", s.authenticated(s.asAdmin(s.adminListInviteLinks)))
-	mux.HandleFunc("DELETE /api/v1/admin/invite/{id}", s.authenticated(s.asAdmin(s.adminDeleteInviteLink)))
-	mux.HandleFunc("DELETE /api/v1/admin/peer/{id}", s.authenticated(s.asAdmin(s.adminKickPeer)))
+	mux.HandleFunc("POST /api/v1/admin/invite", s.authenticated(jsonrpc.AsAdmin(s.adminCreateInviteLink)))
+	mux.HandleFunc("GET /api/v1/admin/invite", s.authenticated(jsonrpc.AsAdmin(s.adminListInviteLinks)))
+	mux.HandleFunc("DELETE /api/v1/admin/invite/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminDeleteInviteLink)))
+	mux.HandleFunc("DELETE /api/v1/admin/peer/{id}", s.authenticated(jsonrpc.AsAdmin(s.adminKickPeer)))
 
 	// redeem is public since it's getting a magic link
 	mux.HandleFunc("POST /api/v1/redeem/{id}", s.handle(s.adminRedeemInviteLink))

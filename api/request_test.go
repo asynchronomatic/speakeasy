@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 func TestIsJSONContentType(t *testing.T) {
@@ -20,7 +23,7 @@ func TestIsJSONContentType(t *testing.T) {
 		{"", false},
 		{"application/jsonn", false},
 	} {
-		if got := IsJSONContentType(tc.ct); got != tc.want {
+		if got := jsonrpc.IsJSONContentType(tc.ct); got != tc.want {
 			t.Fatalf("IsJSONContentType(%q)=%v want %v", tc.ct, got, tc.want)
 		}
 	}
@@ -30,13 +33,13 @@ func TestRequireJSONContentType(t *testing.T) {
 	t.Parallel()
 	good := httptest.NewRequest(http.MethodPost, "/x", nil)
 	good.Header.Set("Content-Type", "application/json")
-	if err := RequireJSONContentType(good); err != nil {
+	if err := jsonrpc.RequireJSONContentType(good); err != nil {
 		t.Fatalf("json: %v", err)
 	}
 
 	bad := httptest.NewRequest(http.MethodPost, "/x", nil)
 	bad.Header.Set("Content-Type", "text/plain")
-	err := RequireJSONContentType(bad)
+	err := jsonrpc.RequireJSONContentType(bad)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -51,25 +54,25 @@ func TestRequireSameOrigin(t *testing.T) {
 	same := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4080/api/mesh/providers", nil)
 	same.Host = "127.0.0.1:4080"
 	same.Header.Set("Origin", "http://127.0.0.1:4080")
-	if err := RequireSameOrigin(same); err != nil {
+	if err := security.RequireSameOrigin(same); err != nil {
 		t.Fatalf("same origin: %v", err)
 	}
 
 	none := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", nil)
-	if err := RequireSameOrigin(none); err != nil {
+	if err := security.RequireSameOrigin(none); err != nil {
 		t.Fatalf("no origin: %v", err)
 	}
 
 	get := httptest.NewRequest(http.MethodGet, "/api/mesh/providers", nil)
 	get.Header.Set("Origin", "http://evil.example")
-	if err := RequireSameOrigin(get); err != nil {
+	if err := security.RequireSameOrigin(get); err != nil {
 		t.Fatalf("safe method: %v", err)
 	}
 
 	cross := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4080/api/mesh/providers", nil)
 	cross.Host = "127.0.0.1:4080"
 	cross.Header.Set("Origin", "http://evil.example")
-	err := RequireSameOrigin(cross)
+	err := security.RequireSameOrigin(cross)
 	if err == nil {
 		t.Fatal("expected origin mismatch")
 	}
@@ -84,19 +87,19 @@ func TestOriginOK(t *testing.T) {
 	same := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
 	same.Host = "127.0.0.1:4080"
 	same.Header.Set("Origin", "http://127.0.0.1:4080")
-	if !OriginOK(same) {
+	if !security.OriginOK(same) {
 		t.Fatal("same origin GET should be allowed")
 	}
 
 	none := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
-	if !OriginOK(none) {
+	if !security.OriginOK(none) {
 		t.Fatal("missing origin should be allowed")
 	}
 
 	cross := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
 	cross.Host = "127.0.0.1:4080"
 	cross.Header.Set("Origin", "http://evil.example")
-	if OriginOK(cross) {
+	if security.OriginOK(cross) {
 		t.Fatal("cross origin GET should be denied")
 	}
 }

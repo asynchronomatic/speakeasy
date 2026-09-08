@@ -21,6 +21,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
@@ -215,12 +216,13 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 }
 
 func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
+	/* TODO: we will authenticate it with inference tokens
 	if p.auth != nil {
 		if _, status := p.auth.DoAuth(w, r); status != http.StatusOK {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-	}
+	}*/
 
 	p.proxyModelRequest(w, r, false)
 }
@@ -299,10 +301,10 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 	p.admin = admin
 }
 
-func (p *Proxy) WithAuthToken(token string) {
+func (p *Proxy) WithAdminToken(token string) {
 	if token != "" {
 		p.auth = auth.NewTokenAuth()
-		p.auth.AddToken(token, auth.AdminUser, auth.AdminGroup)
+		p.auth.AddToken(token, jsonrpc.AdminUser, jsonrpc.AdminGroup)
 		log.WithName("proxy").Warnf("Enabling Token Authentication (Token Configured)")
 	}
 }
@@ -338,7 +340,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	//-------------------------------------------
 	// Routes serviced by the proxy api locally
 	// OpenAI APIs
-	p.mux.HandleFunc("GET /v1/models", p.authenticated(p.openaiListModelsHandler))
+	p.mux.HandleFunc("GET /v1/models", p.handle(p.openaiListModelsHandler))
 	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
@@ -346,29 +348,29 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
-	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(p.refreshTicketHandler))
-	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(p.uiModelsHandler))
-	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(p.meshMembers))
-	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(p.debugGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(p.debugSetHandler))
+	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
+	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
+	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))
+	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugGetHandler)))
+	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugSetHandler)))
 
-	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(p.themeGetHandler))
-	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(p.themeSetHandler))
+	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeGetHandler)))
+	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeSetHandler)))
 
-	p.mux.HandleFunc("GET /api/mesh/providers", p.authenticated(p.providersListHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers", p.authenticated(p.providerAddHandler))
-	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.authenticated(p.providerUpdateHandler))
-	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.authenticated(p.providerDeleteHandler))
+	p.mux.HandleFunc("GET /api/mesh/providers", p.authenticated(jsonrpc.AsAdmin(p.providersListHandler)))
+	p.mux.HandleFunc("POST /api/mesh/providers", p.authenticated(jsonrpc.AsAdmin(p.providerAddHandler)))
+	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.authenticated(jsonrpc.AsAdmin(p.providerUpdateHandler)))
+	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.authenticated(jsonrpc.AsAdmin(p.providerDeleteHandler)))
 
-	p.mux.HandleFunc("GET /api/admin/enabled", p.authenticated(p.adminEnabledHandler))
-	p.mux.HandleFunc("POST /api/admin/enabled", p.authenticated(p.adminEnableHandler))
+	p.mux.HandleFunc("GET /api/admin/enabled", p.authenticated(jsonrpc.AsAdmin(p.adminEnabledHandler)))
+	p.mux.HandleFunc("POST /api/admin/enabled", p.authenticated(jsonrpc.AsAdmin(p.adminEnableHandler)))
 
-	p.mux.HandleFunc("POST /api/admin/invite", p.authenticated(p.withAdmin(p.adminCreateInvitedHandler)))
-	p.mux.HandleFunc("GET /api/admin/invite", p.authenticated(p.withAdmin(p.adminListInvitesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.authenticated(p.withAdmin(p.adminRevokeInviteHandler)))
+	p.mux.HandleFunc("POST /api/admin/invite", p.authenticated(jsonrpc.AsAdmin(p.withAdmin(p.adminCreateInvitedHandler))))
+	p.mux.HandleFunc("GET /api/admin/invite", p.authenticated(jsonrpc.AsAdmin(p.withAdmin(p.adminListInvitesHandler))))
+	p.mux.HandleFunc("DELETE /api/admin/invite/{id}", p.authenticated(jsonrpc.AsAdmin(p.withAdmin(p.adminRevokeInviteHandler))))
 
-	p.mux.HandleFunc("GET /api/admin/node", p.authenticated(p.withAdmin(p.adminListNodesHandler)))
-	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.authenticated(p.withAdmin(p.adminKickNodeHandler)))
+	p.mux.HandleFunc("GET /api/admin/node", p.authenticated(jsonrpc.AsAdmin(p.withAdmin(p.adminListNodesHandler))))
+	p.mux.HandleFunc("DELETE /api/admin/node/{id}", p.authenticated(jsonrpc.AsAdmin(p.withAdmin(p.adminKickNodeHandler))))
 
 	p.mux.HandleFunc("GET /{$}", p.uiRootHandler)
 	p.mux.HandleFunc("GET /ui", p.uiHandler)

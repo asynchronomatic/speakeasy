@@ -1,4 +1,4 @@
-package jsonclient
+package jsonrpc
 
 import (
 	"bytes"
@@ -66,7 +66,7 @@ func (c *Client) Do(method, location string, in any, out any) error {
 
 	req, err := c.newRequest(method, location, bodyIn)
 	if err != nil {
-		return NewRequestError(ErrClientRequest, err.Error())
+		return NewError(ErrClientRequest, err.Error())
 	}
 
 	resp, err := client.Do(req)

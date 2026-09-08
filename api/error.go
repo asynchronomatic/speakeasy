@@ -1,11 +1,12 @@
 package api
 
 import (
-	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
-type Error = jsonclient.RequestError
+type Error = jsonrpc.Error
 
+/*
 func NewError(code int, msg string) *Error {
 	return jsonclient.NewRequestError(code, msg)
-}
+}*/

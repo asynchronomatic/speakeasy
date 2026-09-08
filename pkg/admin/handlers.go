@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
@@ -34,28 +36,19 @@ func (s *Server) logRequest(r *http.Request, user string, start time.Time) {
 	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
 }
 
-func (s *Server) asAdmin(fn func(*JsonRPC) error) func(*JsonRPC) error {
-	return func(ctx *JsonRPC) error {
-		if ctx.Group() != AdminGroup {
-			return api.NewError(http.StatusUnauthorized, "not authorized")
-		}
-		return fn(ctx)
-	}
-}
-
-func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
+func (s *Server) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() {
 			s.logRequest(r, "--", start)
 		}()
 
-		if err := api.RequireSameOrigin(r); err != nil {
-			api.RejectSameOrigin(w, err)
+		if err := security.RequireSameOrigin(r); err != nil {
+			security.RejectSameOrigin(w, err)
 			return
 		}
 
-		ctx := &JsonRPC{w: w, r: r, user: nil}
+		ctx := jsonrpc.NewRPC(w, r)
 		if err := fn(ctx); err != nil {
 			if ce, ok := err.(*api.Error); ok {
 				ctx.Error(ce.Code(), ce.Message())
@@ -66,15 +59,15 @@ func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
 	}
 }
 
-func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
+func (s *Server) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() {
 			s.logRequest(r, "--", start)
 		}()
 
-		if err := api.RequireSameOrigin(r); err != nil {
-			api.RejectSameOrigin(w, err)
+		if err := security.RequireSameOrigin(r); err != nil {
+			security.RejectSameOrigin(w, err)
 			return
 		}
 
@@ -84,7 +77,10 @@ func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
 			return
 		}
 
-		ctx := &JsonRPC{w: w, r: r, user: user}
+		ctx := jsonrpc.NewRPC(w, r).WithProps(jsonrpc.Properties{
+			User:  user.User,
+			Group: user.Group,
+		})
 		if err := fn(ctx); err != nil {
 			if ce, ok := err.(*api.Error); ok {
 				ctx.Error(ce.Code(), ce.Message())
