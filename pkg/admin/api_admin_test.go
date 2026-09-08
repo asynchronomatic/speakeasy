@@ -123,7 +123,7 @@ func TestAdminCreateInviteLink(t *testing.T) {
 	resp := createInvite(t, ts, api.CreateInviteRequest{
 		MeshId:      "mesh-1",
 		Name:        "guest",
-		OneTime:     true,
+		Reusable:    false,
 		LifetimeSec: 3600,
 	})
 	wantLink := "https://mesh.example:4002/api/v1/redeem/" + resp.InviteId
@@ -135,7 +135,7 @@ func TestAdminCreateInviteLink(t *testing.T) {
 	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
 		t.Fatal(err)
 	}
-	if stored.UUID == "" || stored.MeshId != "default" || !stored.OneTime || stored.InviteAs != "guest" {
+	if stored.UUID == "" || stored.MeshId != "default" || stored.Reusable || stored.InviteAs != "guest" {
 		t.Fatalf("stored %+v", stored)
 	}
 	if stored.Expires <= time.Now().Unix() {
@@ -143,15 +143,38 @@ func TestAdminCreateInviteLink(t *testing.T) {
 	}
 }
 
-func TestAdminCreateInviteLinkForever(t *testing.T) {
+func TestAdminCreateInviteLinkDefaults(t *testing.T) {
 	s, ts := newAdminTestServer(t)
 
-	resp := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	resp := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", LifetimeSec: api.DefaultInviteLifetimeSec})
+	if resp.Reusable {
+		t.Fatal("default invite should be one-time")
+	}
+	wantExp := time.Now().Add(24 * time.Hour).Unix()
+	if resp.Expires < wantExp-5 || resp.Expires > wantExp+5 {
+		t.Fatalf("expires %d want ~%d", resp.Expires, wantExp)
+	}
 	var stored inviteSecret
 	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
 		t.Fatal(err)
 	}
-	if stored.Expires != 0 || stored.OneTime {
+	if stored.Reusable || stored.Expires != resp.Expires {
+		t.Fatalf("default invite %+v", stored)
+	}
+}
+
+func TestAdminCreateInviteLinkForever(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+
+	resp := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: true})
+	if !resp.Reusable || resp.Expires != 0 {
+		t.Fatalf("forever response %+v", resp)
+	}
+	var stored inviteSecret
+	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Expires != 0 || !stored.Reusable {
 		t.Fatalf("forever invite %+v", stored)
 	}
 	if !strings.HasSuffix(resp.InviteLink, "/api/v1/redeem/"+resp.InviteId) {
@@ -207,7 +230,7 @@ func TestAdminMutatingRejectsCrossOrigin(t *testing.T) {
 
 func TestAdminRedeemInviteLink(t *testing.T) {
 	s, ts := newAdminTestServer(t)
-	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest", Reusable: true})
 
 	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-redeem-1"},
@@ -256,7 +279,7 @@ func TestAdminRedeemInviteLink(t *testing.T) {
 
 func TestAdminRedeemOneTimeInvite(t *testing.T) {
 	s, ts := newAdminTestServer(t)
-	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", OneTime: true})
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: false})
 
 	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-once-1", Name: "n1"},
@@ -361,8 +384,8 @@ func TestRedeemInviteClient(t *testing.T) {
 
 func TestAdminListInviteLinks(t *testing.T) {
 	_, ts := newAdminTestServer(t)
-	a := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest", OneTime: true})
-	b := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	a := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest", Reusable: false, LifetimeSec: api.DefaultInviteLifetimeSec})
+	b := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: true})
 
 	res := postJSON(t, ts, http.MethodGet, "/api/v1/admin/invite", "test-secret", nil)
 	defer res.Body.Close()
@@ -381,11 +404,11 @@ func TestAdminListInviteLinks(t *testing.T) {
 		byID[inv.InviteId] = inv
 	}
 	ga := byID[a.InviteId]
-	if ga.InviteLink != a.InviteLink || ga.Name != "guest" || !ga.OneTime {
+	if ga.InviteLink != a.InviteLink || ga.Name != "guest" || ga.Reusable {
 		t.Fatalf("invite a %+v", ga)
 	}
 	gb := byID[b.InviteId]
-	if gb.InviteLink != b.InviteLink || gb.OneTime || gb.Expires != 0 {
+	if gb.InviteLink != b.InviteLink || !gb.Reusable || gb.Expires != 0 {
 		t.Fatalf("invite b %+v", gb)
 	}
 }

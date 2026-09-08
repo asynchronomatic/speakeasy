@@ -48,6 +48,7 @@ type Service struct {
 	handler   http.HandlerFunc
 	config    *core.MeshConfig
 	discovery *DiscoveryManager
+	allow     *PeerAllowList
 }
 
 func (m *Service) Close() error {
@@ -209,6 +210,13 @@ func (m *Service) WithUpdateHandlerFunc(h core.UpdateHandlerFunc) {
 func (m *Service) streamHandler(stream network.Stream) {
 	defer stream.Close()
 
+	remote := stream.Conn().RemotePeer().String()
+	if m.allow != nil && !m.allow.Has(remote) {
+		log.WithName("gate").Warnf("stream from %s denied", remote)
+		stream.Reset()
+		return
+	}
+
 	buf := bufio.NewReader(stream)
 	req, err := http.ReadRequest(buf)
 	if err != nil {
@@ -368,6 +376,27 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 
 	relayInfo := PeerAddrInfoFromMulti(btAddress)
 
+	allow := NewPeerAllowList()
+	allow.Pin(nodeID)
+	for _, r := range relayInfo {
+		allow.Pin(r.ID.String())
+	}
+	allow.SetRefresher(func() []string {
+		peers, err := mesh.GetPeers()
+		if err != nil {
+			log.WithName("gate").Warnf("allow-list refresh failed: %v", err)
+			return nil
+		}
+		ids := make([]string, 0, len(peers))
+		for _, p := range peers {
+			ids = append(ids, p.ID)
+		}
+		return ids
+	})
+	if gater == nil {
+		gater = NewGateKeeper(allow)
+	}
+
 	// FIXME: for limited deploys, we only ask for one public relay
 	log.WithName("mesh").Debugf("observedaddrs.ActivationThresh: %d", observedaddrs.ActivationThresh)
 	opts := []libp2p.Option{
@@ -458,7 +487,8 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 			http.Error(w, "not implemented", http.StatusNotImplemented)
 		},
 		config:    mc,
-		discovery: NewDiscoveryManager(mesh, host, node, mc.MDNSEnabled),
+		allow:     allow,
+		discovery: NewDiscoveryManager(mesh, host, node, mc.MDNSEnabled, allow),
 	}
 
 	host.SetStreamHandler(OllamaProtocol, m.streamHandler)

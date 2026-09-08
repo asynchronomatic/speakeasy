@@ -816,6 +816,17 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
   background: var(--bg-panel);
 }
 
+.admin-created-meta {
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.admin-invite-hint {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+}
+
 .invite-link-cell {
   display: inline-flex;
   align-items: center;

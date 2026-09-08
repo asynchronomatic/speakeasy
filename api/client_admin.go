@@ -11,16 +11,21 @@ type AdminClient struct {
 	transport jsonclient.Transport
 }
 
+// DefaultInviteLifetimeSec is applied when LifetimeSec is 0 and Forever is false.
+const DefaultInviteLifetimeSec uint64 = 24 * 60 * 60
+
 type CreateInviteRequest struct {
 	Name        string // This will be attached to all nodes invited in (As InvitedAs )
-	LifetimeSec uint64
-	OneTime     bool
+	LifetimeSec uint64 // if LifetimeSec is 0, this invite lives forever
+	Reusable    bool   // if this is set invite is single use
 	MeshId      string
 }
 
 type CreateInviteResponse struct {
 	InviteId   string
 	InviteLink string
+	Reusable   bool
+	Expires    int64
 }
 
 func (c *AdminClient) CreateInvite(req CreateInviteRequest) (*CreateInviteResponse, error) {
@@ -35,16 +40,18 @@ func (c *AdminClient) CreateInvite(req CreateInviteRequest) (*CreateInviteRespon
 	return &resp, nil
 }
 
+/*
 func (c *AdminClient) InviteLink(meshId string, lifetime time.Duration) (string, string, error) {
-	resp, err := c.CreateInvite(CreateInviteRequest{
-		MeshId:      meshId,
-		LifetimeSec: uint64(lifetime.Seconds()),
-	})
+	req := CreateInviteRequest{MeshId: meshId}
+	if lifetime > 0 {
+		req.LifetimeSec = uint64(lifetime.Seconds())
+	}
+	resp, err := c.CreateInvite(req)
 	if err != nil {
 		return "", "", err
 	}
 	return resp.InviteId, resp.InviteLink, nil
-}
+}*/
 
 type DeleteInviteRequest struct {
 	Invite string
@@ -58,7 +65,7 @@ type InviteInfo struct {
 	InviteId   string
 	InviteLink string
 	Name       string
-	OneTime    bool
+	Reusable   bool
 	Expires    int64
 	MeshId     string
 }

@@ -2,12 +2,11 @@ package admin
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -18,15 +17,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-var SessionTokenTTL = time.Duration(10 * time.Minute)
-
-func newNodeToken() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
-	}
-	return hex.EncodeToString(b)
-}
+var SessionTokenTTL = 10 * time.Minute
 
 func (s *Server) apiNodeAuthorize(ctx *JsonRPC) error {
 	var req api.RegisterNodeRequest
@@ -74,8 +65,10 @@ func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
 	req.Node.LogicalTime = s.logicalTime
 
 	resp := api.RegisterNodeRequest{
-		Node:        req.Node,
-		InstanceID:  newNodeToken(),
+		Node: req.Node,
+		// this is just needed so that if the node registered we can tell it has a new instance
+		// it has nothing to do with auth i'm probably overthinking this
+		InstanceID:  uuid.New().String(),
 		LastUpdate:  s.lastUpdate,
 		LogicalTime: s.logicalTime,
 	}
@@ -209,9 +202,12 @@ type sessionClaims struct {
 }
 
 func (s *Server) issueSessionToken(nodeID string, lifetime time.Duration) (string, int64, error) {
-	claims := sessionClaims{NodeID: nodeID}
-	if lifetime > 0 {
-		claims.Expires = time.Now().Add(lifetime).Unix()
+	if lifetime <= 0 {
+		lifetime = SessionTokenTTL
+	}
+	claims := sessionClaims{
+		NodeID:  nodeID,
+		Expires: time.Now().Add(lifetime).Unix(),
 	}
 	raw, err := magiclink.New(s.magicKey).Encrypt(&claims)
 	if err != nil {
@@ -220,7 +216,7 @@ func (s *Server) issueSessionToken(nodeID string, lifetime time.Duration) (strin
 	return auth.SessionTokenPrefix + raw, claims.Expires, nil
 }
 
-func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error) {
+func (s *Server) sessionClaims(token string) (*sessionClaims, error) {
 	if !strings.HasPrefix(token, auth.SessionTokenPrefix) {
 		return nil, errors.New("not a session token")
 	}
@@ -232,26 +228,27 @@ func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error
 	if claims.NodeID == "" {
 		return nil, errors.New("invalid session")
 	}
-	if claims.Expires != 0 && time.Now().Unix() >= claims.Expires {
+	if claims.Expires == 0 || time.Now().Unix() >= claims.Expires {
 		return nil, errors.New("session expired")
+	}
+	if s.acl == nil || !s.acl.Has(claims.NodeID) {
+		return nil, errors.New("session revoked")
+	}
+	return &claims, nil
+}
+
+func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error) {
+	claims, err := s.sessionClaims(token)
+	if err != nil {
+		return nil, err
 	}
 	return &auth.Properties{User: claims.NodeID, Group: MeshGroup}, nil
 }
 
 func (s *Server) refreshSessionToken(token string) (string, int64, error) {
-	if !strings.HasPrefix(token, auth.SessionTokenPrefix) {
-		return "", 0, errors.New("not a session token")
-	}
-	var claims sessionClaims
-	payload := strings.TrimPrefix(token, auth.SessionTokenPrefix)
-	if err := magiclink.New(s.magicKey).Decrypt(payload, &claims); err != nil {
+	claims, err := s.sessionClaims(token)
+	if err != nil {
 		return "", 0, err
-	}
-	if claims.NodeID == "" {
-		return "", 0, errors.New("invalid session")
-	}
-	if claims.Expires != 0 && time.Now().Unix() >= claims.Expires {
-		return "", 0, errors.New("session expired")
 	}
 	return s.issueSessionToken(claims.NodeID, SessionTokenTTL)
 }
@@ -280,9 +277,7 @@ func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 		return api.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 
-	// FIXME:  the session never expires but that's just bad, we should expire the session by requiring the
-	//         the client to once in a while use the mesh key to get a new one by doing another login
-	token, expires, err := s.issueSessionToken(req.NodeID, 0) // never expires for now, but we should fix this
+	token, expires, err := s.issueSessionToken(req.NodeID, SessionTokenTTL)
 	if err != nil {
 		return err
 	}

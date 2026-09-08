@@ -13,7 +13,7 @@ import (
 type OpenaiModel = modeldex.OpenaiModel
 type OpenaiModelList = modeldex.OpenaiModelList
 
-func (p *Proxy) openaiListModelsHandler(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) openaiListModelsHandler(rpc *RPC) error {
 	resp := &OpenaiModelList{
 		Object: "list",
 	}
@@ -26,9 +26,7 @@ func (p *Proxy) openaiListModelsHandler(w http.ResponseWriter, r *http.Request) 
 			OwnedBy: "ollama",
 		})
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	return rpc.ReplyObject(resp)
 }
 
 // openaiAPIError is the nested object official OpenAI clients unmarshal

@@ -22,13 +22,6 @@ func nodeCommand() *cli.Command {
 				Action:  nodeList,
 			},
 			{
-				Name:      "authorize",
-				Aliases:   []string{"auth"},
-				Usage:     "Authorize a peer ID onto the mesh ACL",
-				ArgsUsage: "PEER_ID",
-				Action:    nodeAuthorize,
-			},
-			{
 				Name:  "register",
 				Usage: "Register a named node",
 				Flags: []cli.Flag{
@@ -73,24 +66,6 @@ func nodeList(_ context.Context, cmd *cli.Command) error {
 		fmt.Fprintf(w, "%s\t%s\t%s\n", n.Name, n.ID, updated)
 	}
 	return w.Flush()
-}
-
-func nodeAuthorize(_ context.Context, cmd *cli.Command) error {
-	/* FIXME: deprecated
-	id, err := requireArg(cmd, "peer id")
-	if err != nil {
-		return err
-	}
-	mc, err := meshClient(cmd)
-	if err != nil {
-		return err
-	}
-	if err := mc.Authorize(id); err != nil {
-		return err
-	}
-	fmt.Fprintf(out(), "authorized %s\n", id)
-	*/
-	return nil
 }
 
 func nodeRegister(_ context.Context, cmd *cli.Command) error {

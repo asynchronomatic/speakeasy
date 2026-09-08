@@ -317,6 +317,7 @@
                     <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   </button>
                 </span>
+                <span id="admin-invite-created-meta" class="admin-created-meta"></span>
               </div>
               <div class="table-wrap">
                 <table class="data-table" id="admin-invites-table">
@@ -325,7 +326,7 @@
                       <th>Name</th>
                       <th>Link</th>
                       <th>Expires</th>
-                      <th>Use</th>
+                      <th>Uses</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -435,16 +436,17 @@
           <label class="admin-field">
             <span>Lifetime</span>
             <select id="admin-invite-lifetime" class="select-input">
-              <option value="0">Never expires</option>
               <option value="3600">1 hour</option>
-              <option value="86400">1 day</option>
+              <option value="86400" selected>24 hours</option>
               <option value="604800">7 days</option>
+              <option value="0">Never expires</option>
             </select>
           </label>
           <label class="admin-check">
-            <input type="checkbox" id="admin-invite-once">
-            <span>One-time</span>
+            <input type="checkbox" id="admin-invite-once" checked>
+            <span>One-time (recommended)</span>
           </label>
+          <p class="admin-invite-hint muted">Defaults to one use and expires in 24 hours. Never-expiring or reusable invites need confirmation.</p>
           <p id="admin-invite-modal-error" class="admin-error hidden" hidden></p>
         </div>
         <div class="modal-footer-actions">

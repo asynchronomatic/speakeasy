@@ -93,6 +93,7 @@
     adminModalError: document.getElementById("admin-invite-modal-error"),
     adminCreated: document.getElementById("admin-invite-created"),
     adminCreatedLink: document.getElementById("admin-invite-link"),
+    adminCreatedMeta: document.getElementById("admin-invite-created-meta"),
     adminCopy: document.getElementById("admin-invite-copy"),
     adminInvitesBody: document.getElementById("admin-invites-body"),
     adminNodesBody: document.getElementById("admin-nodes-body"),
@@ -1458,10 +1459,34 @@
 
   function formatInviteExpiry(unix) {
     const n = Number(unix) || 0;
-    if (n <= 0) return "Never";
+    if (n <= 0) return "Never (until revoked)";
     const d = new Date(n * 1000);
-    if (Number.isNaN(d.getTime())) return "Never";
-    return d.toLocaleString();
+    if (Number.isNaN(d.getTime())) return "Never (until revoked)";
+    const ms = d.getTime() - Date.now();
+    let rel = "expired";
+    if (ms > 0 && ms < 60 * 60 * 1000) rel = Math.max(1, Math.round(ms / 60000)) + " min left";
+    else if (ms >= 60 * 60 * 1000 && ms < 24 * 60 * 60 * 1000) rel = Math.round(ms / (60 * 60 * 1000)) + " h left";
+    else if (ms >= 24 * 60 * 60 * 1000) rel = Math.round(ms / (24 * 60 * 60 * 1000)) + " d left";
+    return d.toLocaleString() + " (" + rel + ")";
+  }
+
+  function inviteIsOneTime(inv) {
+    return !!(inv && (inv.OneTime || inv.oneTime));
+  }
+
+  function formatInviteUses(inv) {
+    return inviteIsOneTime(inv) ? "1 remaining" : "Unlimited";
+  }
+
+  function inviteExpiryHTML(inv) {
+    const n = Number(inv && (inv.Expires || inv.expires)) || 0;
+    if (n <= 0) return `<span class="badge badge-offline">Never (until revoked)</span>`;
+    return escapeHTML(formatInviteExpiry(n));
+  }
+
+  function inviteUsesHTML(inv) {
+    if (inviteIsOneTime(inv)) return `<span class="badge">1 remaining</span>`;
+    return `<span class="badge badge-offline">Unlimited</span>`;
   }
 
   function setErrorEl(node, msg) {
@@ -1576,17 +1601,26 @@
     markCopied(btn, fallbackCopy(value));
   }
 
-  function showCreatedInvite(link) {
+  function showCreatedInvite(created) {
     if (!el.adminCreated) return;
+    const link = typeof created === "string"
+      ? created
+      : (created && (created.InviteLink || created.inviteLink)) || "";
     if (!link) {
       el.adminCreated.hidden = true;
       el.adminCreated.classList.add("hidden");
+      if (el.adminCreatedMeta) el.adminCreatedMeta.textContent = "";
       return;
     }
     el.adminCreated.hidden = false;
     el.adminCreated.classList.remove("hidden");
     if (el.adminCreatedLink) el.adminCreatedLink.textContent = tailLink(link);
     if (el.adminCopy) el.adminCopy.setAttribute("data-copy-link", link);
+    if (el.adminCreatedMeta) {
+      const uses = typeof created === "string" ? "" : formatInviteUses(created);
+      const exp = typeof created === "string" ? "" : formatInviteExpiry(created.Expires || created.expires);
+      el.adminCreatedMeta.textContent = [uses, exp ? "expires " + exp : ""].filter(Boolean).join(" · ");
+    }
   }
 
   function nodeID(n) {
@@ -1643,13 +1677,11 @@
       const id = escapeHTML(inv.InviteId || inv.inviteId || "");
       const link = inv.InviteLink || inv.inviteLink || "";
       const name = escapeHTML(inv.Name || inv.name || "—");
-      const once = inv.OneTime || inv.oneTime ? "One-time" : "Reusable";
-      const expires = escapeHTML(formatInviteExpiry(inv.Expires || inv.expires));
       return `<tr>
         <td>${name}</td>
         <td>${inviteLinkCell(link)}</td>
-        <td>${expires}</td>
-        <td>${once}</td>
+        <td>${inviteExpiryHTML(inv)}</td>
+        <td>${inviteUsesHTML(inv)}</td>
         <td><button type="button" class="btn btn-danger btn-sm" data-revoke-invite="${id}">Revoke</button></td>
       </tr>`;
     }).join("");
@@ -1724,17 +1756,18 @@
     if (!state.adminEnabled) return;
     setInviteModalError("");
     const lifetime = Number(el.adminLifetime && el.adminLifetime.value) || 0;
+    const once = !!(el.adminOnce && el.adminOnce.checked);
     const submit = document.getElementById("admin-invite-create");
     if (submit) submit.disabled = true;
     try {
       const created = await sendJSON("/api/admin/invite", "POST", {
         Name: (el.adminName && el.adminName.value.trim()) || "",
         LifetimeSec: lifetime,
-        OneTime: !!(el.adminOnce && el.adminOnce.checked),
+        Reusable: !once,
         MeshId: "default",
       });
       state.createdInvite = created;
-      showCreatedInvite(created.InviteLink || created.inviteLink || "");
+      showCreatedInvite(created);
       closeInviteModal();
       await loadInvites();
     } catch (err) {
@@ -1834,14 +1867,25 @@
 
   function refreshSocketURL() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    let url = proto + "//" + window.location.host + REFRESH_WS_PATH;
-    if (state.proxyToken) url += "?access_token=" + encodeURIComponent(state.proxyToken);
-    return url;
+    return proto + "//" + window.location.host + REFRESH_WS_PATH;
+  }
+
+  async function issueRefreshTicket() {
+    if (!state.authRequired) return;
+    await sendJSON("/api/mesh/refresh/ticket", "POST", {});
   }
 
   function connectRefreshSocket() {
     let delay = 1000;
-    function connect() {
+    async function connect() {
+      try {
+        await issueRefreshTicket();
+      } catch (err) {
+        console.error(err);
+        setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 15000);
+        return;
+      }
       let socket;
       try {
         socket = new WebSocket(refreshSocketURL());
@@ -1897,6 +1941,20 @@
   }
   if (el.adminForm) {
     el.adminForm.addEventListener("submit", createInvite);
+  }
+  if (el.adminLifetime) {
+    el.adminLifetime.addEventListener("change", () => {
+      if (el.adminLifetime.value !== "0") return;
+      const ok = window.confirm("This invite will never expire. Anyone with the link can join until you revoke it. Continue?");
+      if (!ok) el.adminLifetime.value = "86400";
+    });
+  }
+  if (el.adminOnce) {
+    el.adminOnce.addEventListener("change", () => {
+      if (el.adminOnce.checked) return;
+      const ok = window.confirm("This invite can be reused until it expires. Anyone with the link can add multiple nodes. Continue?");
+      if (!ok) el.adminOnce.checked = true;
+    });
   }
   if (el.adminModal) {
     el.adminModal.addEventListener("click", (e) => {

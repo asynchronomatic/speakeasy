@@ -290,7 +290,7 @@ func TestAdminInviteCRUD(t *testing.T) {
 			InviteId:   "abc123",
 			InviteLink: "http://admin/api/v1/redeem/abc123",
 			Name:       req.Name,
-			OneTime:    req.OneTime,
+			Reusable:   req.Reusable,
 			Expires:    0,
 			MeshId:     req.MeshId,
 		}
@@ -324,8 +324,9 @@ func TestAdminInviteCRUD(t *testing.T) {
 	p.WithAdminController(api.NewClient(ts.URL, "secret").Admin())
 
 	res := doProxyJSON(t, p, http.MethodPost, "/api/admin/invite", api.CreateInviteRequest{
-		Name:    "guest",
-		OneTime: true,
+		Name:        "guest",
+		Reusable:    false,
+		LifetimeSec: api.DefaultInviteLifetimeSec,
 	})
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(res.Body)
@@ -349,7 +350,7 @@ func TestAdminInviteCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if len(listed.Invites) != 1 || listed.Invites[0].Name != "guest" || !listed.Invites[0].OneTime {
+	if len(listed.Invites) != 1 || listed.Invites[0].Name != "guest" || listed.Invites[0].Reusable {
 		t.Fatalf("listed %+v", listed.Invites)
 	}
 

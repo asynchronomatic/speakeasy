@@ -31,7 +31,7 @@ func (s *Server) logRequest(r *http.Request, user string, start time.Time) {
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.RequestURI)
+	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
 }
 
 func (s *Server) asAdmin(fn func(*JsonRPC) error) func(*JsonRPC) error {

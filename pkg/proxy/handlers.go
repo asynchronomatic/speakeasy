@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -18,14 +17,6 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	h.Set("Content-Security-Policy", contentSecurityPolicy)
 }
 
-func publicPath(path string) bool {
-	switch path {
-	case "/", "/ui", "/favicon.ico", "/api/mesh/auth":
-		return true
-	}
-	return strings.HasPrefix(path, "/ui/")
-}
-
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	host := r.Header.Get("x-forwarded-for")
 	if host == "" {
@@ -36,7 +27,7 @@ func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.RequestURI)
+	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
 }
 
 func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
@@ -105,14 +96,11 @@ func (p *Proxy) authRequiredHandler(rpc *RPC) error {
 
 func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) {
 	if p.auth != nil {
-		if r.Header.Get("Authorization") == "" {
-			if tok := strings.TrimSpace(r.URL.Query().Get("access_token")); tok != "" {
-				r.Header.Set("Authorization", "Bearer "+tok)
+		if !p.consumeWSTicket(r) {
+			if _, code := p.auth.DoAuth(w, r); code != http.StatusOK {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
 			}
-		}
-		if _, code := p.auth.DoAuth(w, r); code != http.StatusOK {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
 		}
 	}
 	p.notifier.Handle(w, r)
