@@ -88,6 +88,7 @@ func (l *Log) GetLevel() uint32 {
 }
 
 func (l *Log) SetLevel(level uint32) {
+	l.Infof("set log level:%v", level)
 	l.level = level
 }
 

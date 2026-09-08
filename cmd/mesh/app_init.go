@@ -262,6 +262,10 @@ func defaultConfigYAML(s installSettings) string {
   listen: %q
   # The version of ollama to report as
   version: %q
+  # Allow provider base_url to target loopback / private / link-local addresses.
+  # Required for a local Ollama at 127.0.0.1. Leave false on a public listen
+  # unless you intentionally proxy to LAN backends.
+  allow_private_backends: true
 
 mesh:
   name: %q

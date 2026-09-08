@@ -88,6 +88,7 @@ All runtime settings are in `./config.yaml`. `mesh init` writes a commented file
 ```yaml
 proxy:
   listen: ":8080"          # local Ollama/OpenAI proxy + UI
+  allow_private_backends: true  # required for local Ollama at 127.0.0.1
 
 mesh:
   name: ""                 # empty → hostname
@@ -110,7 +111,7 @@ providers:
 
 A single proxy can front more than one Ollama process: add another `providers` item with its own `id` and `base_url`. Models from every provider are merged into this node’s advertised set.
 
-`allow.list` (optional, admin working directory) is extra peer IDs, one per line.
+`allow.list` (optional, same directory as the admin DB, or `ADMIN_ALLOW_PATH`) is extra peer IDs, one per line.
 
 Do not commit a live `admin_secret`. Examples live under `examples/`.
 

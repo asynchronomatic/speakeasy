@@ -16,8 +16,13 @@ import (
 
 func testProxy(t *testing.T) *Proxy {
 	t.Helper()
+	return newTestProxy(t, nil, true)
+}
+
+func newTestProxy(t *testing.T, providers []core.Provider, allowPrivate bool) *Proxy {
+	t.Helper()
 	orch := testable.NewMeshOrchestrator()
-	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", nil)
+	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", providers, allowPrivate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +170,7 @@ func TestAdminEnableToken(t *testing.T) {
 
 	orch := testable.NewMeshOrchestrator()
 	orch.SetAdminAddress(ts.URL)
-	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", nil)
+	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}

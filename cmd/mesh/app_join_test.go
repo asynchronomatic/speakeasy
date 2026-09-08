@@ -30,6 +30,9 @@ func TestConfigFromInvite(t *testing.T) {
 	if cfg.Proxy.Listen != core.DefaultProxyListen {
 		t.Fatalf("listen %q", cfg.Proxy.Listen)
 	}
+	if !cfg.Proxy.AllowPrivateBackends {
+		t.Fatal("join default should allow private backends for local Ollama")
+	}
 	if len(cfg.Providers) != 1 || cfg.Providers[0].Type != "ollama" {
 		t.Fatalf("providers %+v", cfg.Providers)
 	}

@@ -76,9 +76,10 @@ type MeshConfig struct {
 
 type Config struct {
 	Proxy struct {
-		Listen   string `yaml:"listen"`
-		Theme    string `yaml:"theme,omitempty"`
-		Password string `yaml:"password"`
+		Listen               string `yaml:"listen"`
+		Theme                string `yaml:"theme,omitempty"`
+		Password             string `yaml:"password"`
+		AllowPrivateBackends bool   `yaml:"allow_private_backends"`
 	} `yaml:"proxy"`
 	Admin     AdminConfig `yaml:"admin"`
 	Mesh      MeshConfig  `yaml:"mesh"`

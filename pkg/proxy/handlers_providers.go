@@ -21,7 +21,7 @@ func providerIndex(providers []core.Provider, id string) int {
 	return -1
 }
 
-func validateProvider(prov *core.Provider) error {
+func (p *Proxy) validateProvider(prov *core.Provider) error {
 	prov.ID = strings.TrimSpace(prov.ID)
 	prov.Type = strings.TrimSpace(prov.Type)
 	prov.BaseURL = strings.TrimSpace(prov.BaseURL)
@@ -33,6 +33,9 @@ func validateProvider(prov *core.Provider) error {
 	}
 	if prov.BaseURL == "" {
 		return api.NewError(http.StatusBadRequest, "provider base_url is required")
+	}
+	if _, err := core.ParseProviderURL(prov.BaseURL, p.allowPrivate); err != nil {
+		return api.NewError(http.StatusBadRequest, err.Error())
 	}
 	return nil
 }
@@ -92,7 +95,7 @@ func (p *Proxy) providerAddHandler(rpc *RPC) error {
 	if err := rpc.GetObject(&prov); err != nil {
 		return err
 	}
-	if err := validateProvider(&prov); err != nil {
+	if err := p.validateProvider(&prov); err != nil {
 		return err
 	}
 
@@ -123,7 +126,7 @@ func (p *Proxy) providerUpdateHandler(rpc *RPC) error {
 		return err
 	}
 	prov.ID = id
-	if err := validateProvider(&prov); err != nil {
+	if err := p.validateProvider(&prov); err != nil {
 		return err
 	}
 

@@ -16,7 +16,7 @@ func runProxy(config *core.Config) error {
 	if err != nil {
 		log.Fatalf("Could not initialize mesh err:%v\n", err)
 	}
-	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers)
+	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers, config.PrivateBackendsAllowed())
 	attachAdminController(p, config)
 
 	if config.Proxy.Password != "" {
@@ -117,7 +117,7 @@ func runHybrid(config *core.Config) error {
 	}
 	defer relayService.Close()
 
-	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers)
+	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers, config.PrivateBackendsAllowed())
 	return core.RunInterruptible(p)
 }
 */

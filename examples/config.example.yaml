@@ -5,6 +5,9 @@ proxy:
   listen: ":9080"
   # The version of ollama to report as
   version: "0.33.0"
+  # Allow provider base_url to target loopback / private / link-local addresses.
+  # Required for a local Ollama at 127.0.0.1. Cloud metadata endpoints are always blocked.
+  allow_private_backends: true
 
 # mesh: This is the configuration for the p2p MESH we're joining or running
 mesh:

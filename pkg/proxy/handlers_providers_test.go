@@ -262,6 +262,50 @@ func TestProviderAddRequiresFields(t *testing.T) {
 	}
 }
 
+func TestProviderAddRejectsUnsafeURL(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := newTestProxy(t, nil, true)
+	cases := []core.Provider{
+		{ID: "a", Type: "ollama", BaseURL: "file:///etc/passwd"},
+		{ID: "b", Type: "ollama", BaseURL: "http://169.254.169.254/"},
+		{ID: "c", Type: "ollama", BaseURL: "http://metadata.google.internal/"},
+		{ID: "d", Type: "ollama", BaseURL: "http://user:pass@example.com"},
+	}
+	for _, prov := range cases {
+		res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", prov)
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s status %d want 400", prov.BaseURL, res.StatusCode)
+		}
+	}
+}
+
+func TestProviderAddRejectsPrivateWithoutOptIn(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := newTestProxy(t, nil, false)
+	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+		ID:      "local2",
+		Type:    "ollama",
+		BaseURL: "http://127.0.0.1:11434",
+	})
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d want 400", res.StatusCode)
+	}
+
+	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+		ID:      "cloud",
+		Type:    "openai",
+		BaseURL: "https://api.example",
+	})
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		t.Fatalf("public url %d: %s", res.StatusCode, b)
+	}
+	res.Body.Close()
+}
+
 func TestProviderUpdateMissing(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
