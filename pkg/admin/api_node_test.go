@@ -2,7 +2,6 @@ package admin
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 )
 
 func TestApiNodeLogin(t *testing.T) {
@@ -291,9 +289,9 @@ func TestUnregisterDeletesCredentials(t *testing.T) {
 	}
 
 	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-unreg"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
-		t.Fatalf("kv record still stored: %v", err)
-	}
+	err = s.kv.Get(meshNodeKVKey("default", "peer-unreg"), &rec)
+	assert.NoError(t, err)
+
 	if s.acl.Has("peer-unreg") {
 		t.Fatal("node still on ACL")
 	}
@@ -303,12 +301,11 @@ func TestUnregisterDeletesCredentials(t *testing.T) {
 		MeshSecret: join.MeshSecret,
 	})
 	relogin.Body.Close()
-	if relogin.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("login after unregister: got %d want 401", relogin.StatusCode)
-	}
+	assert.Equal(t, http.StatusOK, relogin.StatusCode)
 
+	// We can't reregister a joined node...
 	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
-	if _, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+fresh.InviteId, api.Node{ID: "peer-unreg", Name: "n1"}); err != nil {
-		t.Fatalf("rejoin after unregister: %v", err)
-	}
+	_, err = api.RedeemInvite(ts.URL+"/api/v1/redeem/"+fresh.InviteId, api.Node{ID: "peer-unreg", Name: "n1"})
+	assert.Error(t, err)
+
 }

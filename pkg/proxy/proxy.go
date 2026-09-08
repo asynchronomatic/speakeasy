@@ -25,6 +25,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 )
@@ -119,7 +120,10 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 		proxy.Director = func(req *http.Request) {
 			orig(req)
 			req.Host = u.Host
-			scrubProviderRequest(req, local.Token)
+			security.ScrubHeaders(req, security.DefaultAllowedHeaders)
+			if local.Token != "" {
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
+			}
 		}
 		proxy.Transport = p.providerRT
 		proxy.ModifyResponse = rejectProviderRedirect

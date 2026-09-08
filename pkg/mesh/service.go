@@ -23,6 +23,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/pkg/jsonclient"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
@@ -145,8 +146,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonclient.D
 }
 
 func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *http.Request) {
-	// strip headers we cannot pass down stream
-	delete(r.Header, "Origin")
+	security.ScrubHeaders(r, security.DefaultAllowedHeaders)
 
 	stream, err := m.NewStream(destNode.ID, true, OllamaProtocol)
 	if err != nil {
