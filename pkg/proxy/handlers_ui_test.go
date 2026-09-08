@@ -59,7 +59,7 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "debug-toggle", "debug-error", "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "providers-body", "provider-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
@@ -160,6 +160,7 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"/api/admin/invite",
 		"/api/admin/node",
 		"checkAdmin",
+		`state.view !== "admin"`,
 		"enableAdmin",
 		"setAdminEnabled",
 		"createInvite",
@@ -182,6 +183,10 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"/api/mesh/theme",
 		"saveTheme",
 		"loadTheme",
+		"/api/mesh/debug",
+		"saveDebug",
+		"loadDebug",
+		"debugEnabled",
 		"/api/mesh/providers",
 		"openProviderModal",
 		"saveProvider",

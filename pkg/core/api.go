@@ -34,7 +34,7 @@ type PeerNode struct {
 }
 
 func (p PeerNode) String() string {
-	return fmt.Sprintf("%s/%s", p.ID, p.Name)
+	return fmt.Sprintf("%s (%s)", p.Name, p.ID)
 }
 
 func NewPeerNode(id, name string) PeerNode {

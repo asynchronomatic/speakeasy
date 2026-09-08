@@ -126,7 +126,7 @@ func ConnKind(c network.Conn) string {
 
 func WaitForAddress(h host.Host, once bool) string {
 	for {
-		log.Debugf("Waiting for circuit address\n")
+		log.WithName("mesh").Debugf("Waiting for circuit addresses\n")
 		hasCircuit := ""
 		for _, a := range h.Addrs() {
 			if strings.HasSuffix(a.String(), "p2p-circuit") {
@@ -135,7 +135,7 @@ func WaitForAddress(h host.Host, once bool) string {
 		}
 
 		if hasCircuit != "" {
-			log.Debugf("My Addresses:\n")
+			log.WithName("mesh").Debugf("My Addresses:\n")
 			for _, a := range h.Addrs() {
 				log.Debugf("  %s\n", a)
 			}

@@ -158,3 +158,31 @@ func shortPeer(id string) string {
 	}
 	return id[:8] + "…"
 }
+
+func (p *Proxy) debugSetHandler(rpc *RPC) error {
+	req := struct {
+		DebugEnabled bool `json:"debugEnabled"`
+	}{}
+
+	if err := rpc.GetObject(&req); err != nil {
+		return err
+	}
+
+	if req.DebugEnabled {
+		log.Default.SetLevel(log.LogAll)
+	} else {
+		log.Default.SetLevel(log.LogNormal)
+	}
+
+	return rpc.ReplyObject(&req)
+}
+
+func (p *Proxy) debugGetHandler(rpc *RPC) error {
+	req := struct {
+		DebugEnabled bool `json:"debugEnabled"`
+	}{
+		DebugEnabled: log.Default.GetLevel() == log.LogAll,
+	}
+
+	return rpc.ReplyObject(&req)
+}

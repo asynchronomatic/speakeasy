@@ -83,6 +83,10 @@ func (l *Log) ColorPrint(color string, s string) {
 	fmt.Fprintf(os.Stdout, "%s | %4s | %s%s%s", now.Format(l.fmtTime), color, l.component, s, ColorReset)
 }
 
+func (l *Log) GetLevel() uint32 {
+	return l.level
+}
+
 func (l *Log) SetLevel(level uint32) {
 	l.level = level
 }

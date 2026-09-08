@@ -62,6 +62,11 @@ func main() {
 	}
 
 	config := core.MustLoadConfig()
+	if config.Debug {
+		log.Default.SetLevel(log.LogAll)
+	} else {
+		log.Default.SetLevel(log.LogNormal)
+	}
 
 	var err error
 	switch cmd {
