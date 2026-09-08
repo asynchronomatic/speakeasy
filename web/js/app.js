@@ -1834,14 +1834,25 @@
 
   function refreshSocketURL() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    let url = proto + "//" + window.location.host + REFRESH_WS_PATH;
-    if (state.proxyToken) url += "?access_token=" + encodeURIComponent(state.proxyToken);
-    return url;
+    return proto + "//" + window.location.host + REFRESH_WS_PATH;
+  }
+
+  async function issueRefreshTicket() {
+    if (!state.authRequired) return;
+    await sendJSON("/api/mesh/refresh/ticket", "POST", {});
   }
 
   function connectRefreshSocket() {
     let delay = 1000;
-    function connect() {
+    async function connect() {
+      try {
+        await issueRefreshTicket();
+      } catch (err) {
+        console.error(err);
+        setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 15000);
+        return;
+      }
       let socket;
       try {
         socket = new WebSocket(refreshSocketURL());

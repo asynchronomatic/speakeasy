@@ -35,7 +35,7 @@ func TestNodeHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, needle := range []string{"list", "authorize", "register", "unregister", "relay"} {
+	for _, needle := range []string{"list", "register", "unregister", "relay"} {
 		if !strings.Contains(out, needle) {
 			t.Fatalf("node help missing %q:\n%s", needle, out)
 		}

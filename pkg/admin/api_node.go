@@ -2,12 +2,11 @@ package admin
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -18,15 +17,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-var SessionTokenTTL = time.Duration(10 * time.Minute)
-
-func newNodeToken() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
-	}
-	return hex.EncodeToString(b)
-}
+var SessionTokenTTL = 10 * time.Minute
 
 func (s *Server) apiNodeAuthorize(ctx *JsonRPC) error {
 	var req api.RegisterNodeRequest
@@ -74,8 +65,10 @@ func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
 	req.Node.LogicalTime = s.logicalTime
 
 	resp := api.RegisterNodeRequest{
-		Node:        req.Node,
-		InstanceID:  newNodeToken(),
+		Node: req.Node,
+		// this is just needed so that if the node registered we can tell it has a new instance
+		// it has nothing to do with auth i'm probably overthinking this
+		InstanceID:  uuid.New().String(),
 		LastUpdate:  s.lastUpdate,
 		LogicalTime: s.logicalTime,
 	}

@@ -73,7 +73,7 @@ func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]Mod
 	models := make(map[string]ModelRoute)
 
 	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
-		log.WithName("mdex").Errorf("failed to parse provider URL:%v")
+		log.WithName("mdex").Errorf("failed to parse provider URL: %v", err)
 		return nil, err
 	}
 
@@ -206,7 +206,7 @@ func (e *ModelRouter) AddPeerModels(node core.PeerNode, models map[string]ModelR
 	defer e.lock.Unlock()
 
 	for name := range models {
-		route, ok := e.MeshModels[node.ID]
+		route, ok := e.MeshModels[name]
 		if !ok {
 			log.Debugf("adding peer model %s: %+v", name, models[name])
 			route = models[name]

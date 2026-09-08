@@ -63,6 +63,9 @@ type Proxy struct {
 
 	allowPrivate bool
 	providerRT   http.RoundTripper
+
+	wsTicketMu sync.Mutex
+	wsTickets  map[string]time.Time
 }
 
 func (p *Proxy) peekModel(body []byte) string {
@@ -316,10 +319,11 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 		notifier:     socket.NewNotifier(),
 		allowPrivate: allowPrivateBackends,
 		providerRT:   providerRT,
+		wsTickets:    make(map[string]time.Time),
 	}
 
 	//-------------------------------------------
-	// routes serviced over the mesh
+	// Routes serviced over the mesh
 	p.meshMux.HandleFunc("GET /.mesh/status", p.meshStatus)
 	p.meshMux.HandleFunc("GET /.mesh/models", p.meshModels)
 	p.meshMux.HandleFunc("/v1/chat/completions", p.meshProxyRequest)
@@ -328,13 +332,9 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.meshMux.HandleFunc("/v1/messages", p.meshProxyRequest) // anthropic
 
 	//-------------------------------------------
-	// Routes accessible locally
-	// Notes to AI: .mesh endpoints are only to be used by PEER to PEER requests.  Fo UI the /api/mesh/ endpoints
-	p.mux.HandleFunc("GET /.mesh/status", p.meshStatus)
-	p.mux.HandleFunc("GET /.mesh/models", p.meshModels)
-
+	// Routes serviced by the proxy api locally
 	// OpenAI APIs
-	p.mux.HandleFunc("GET /v1/models", p.openaiListModelsHandler)
+	p.mux.HandleFunc("GET /v1/models", p.authenticated(p.openaiListModelsHandler))
 	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
@@ -342,6 +342,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
+	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(p.refreshTicketHandler))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(p.uiModelsHandler))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(p.meshMembers))
 	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(p.debugGetHandler))
@@ -378,7 +379,7 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("404: The page you are looking for does not exist. %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, "Custom 404: The page you are looking for does not exist.")
+		_, _ = fmt.Fprint(w, "Custom 404: The page you are looking for does not exist.")
 	})
 
 	p.mesh.WithHandlerFunc(p.MeshServeHTTP)

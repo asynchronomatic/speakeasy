@@ -142,7 +142,10 @@ func TestAppJSUsesRefreshWebsocket(t *testing.T) {
 	if !strings.Contains(s, "new WebSocket") {
 		t.Fatal("app.js should open a WebSocket for refresh")
 	}
-	for _, old := range []string{"setInterval(refresh", "POLL_MS"} {
+	if !strings.Contains(s, "/api/mesh/refresh/ticket") {
+		t.Fatal("app.js should fetch a websocket ticket before connecting")
+	}
+	for _, old := range []string{"setInterval(refresh", "POLL_MS", "access_token"} {
 		if strings.Contains(s, old) {
 			t.Fatalf("app.js still polls with %s", old)
 		}
