@@ -277,10 +277,10 @@ func (s *Server) apiNodeLogin(ctx *JsonRPC) error {
 }
 
 // nodeExpiryCheckInterval defines the interval for checking and expiring stale node registrations.
-const nodeExpiryCheckInterval = 1 * time.Minute
+const nodeExpiryCheckInterval = 5 * time.Minute
 
 // nodeExpiry defines the duration after which a node is considered stale and eligible for expiration.
-const nodeExpiry = 1 * time.Minute
+const nodeExpiry = 15 * time.Minute
 
 func (s *Server) runExpireNodes(ctx context.Context) {
 	for {

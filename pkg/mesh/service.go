@@ -3,12 +3,10 @@ package mesh
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -33,7 +31,6 @@ import (
 
 func init() {
 	observedaddrs.ActivationThresh = 1
-	log.Infof("observed addrs activation threshold set to 1")
 }
 
 const (
@@ -74,37 +71,6 @@ func (m *Service) clearDialBackoff(id peer.ID) {
 	if sw, ok := m.h.Network().(*swarm.Swarm); ok {
 		sw.Backoff().Clear(id)
 	}
-}
-
-func isTransientDialErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, swarm.ErrDialBackoff) {
-		return true
-	}
-	s := err.Error()
-	for _, sub := range []string{
-		"dial backoff",
-		"all dials failed",
-		"failed to dial",
-		"no addresses",
-		"NO_RESERVATION",
-		"connection refused",
-		"connection reset",
-		"i/o timeout",
-		"timed out",
-		"deadline exceeded",
-		"transient connection",
-		"limited connection",
-		"we don't have a connection to peer",
-		"stream reset",
-	} {
-		if strings.Contains(s, sub) {
-			return true
-		}
-	}
-	return false
 }
 
 // openStreamDirect attempts to open a stream on a direct connection, if we do not have a direct connection a dial is attempted
@@ -269,22 +235,9 @@ func (m *Service) GetPeerConnKind(id string) string {
 	return ""
 }
 
-// FIXME: thhis should get the info from discovery
 func (m *Service) GetPeerMap() (map[string]core.PeerNode, error) {
-	peers, err := m.ctrl.GetPeers()
-	if err != nil {
-		return nil, err
-	}
-	peerMap := make(map[string]core.PeerNode)
-	for _, p := range peers {
-		peerMap[p.ID] = core.PeerNode{
-			ID:          p.ID,
-			Name:        p.Name,
-			LastUpdate:  p.LastUpdate,
-			LogicalTime: p.LogicalTime,
-		}
-	}
-	return peerMap, nil
+	peers, err := m.discovery.GetPeerMap()
+	return peers, err
 }
 
 func (m *Service) diffNodes(old, new map[string]api.Node) (map[string]api.Node, map[string]api.Node) {
@@ -409,7 +362,7 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 	relayInfo := PeerAddrInfoFromMulti(btAddress)
 
 	// FIXME: for limited deploys, we only ask for one public relay
-	observedaddrs.ActivationThresh = 1
+	log.WithName("mesh").Debugf("observedaddrs.ActivationThresh: %d", observedaddrs.ActivationThresh)
 	opts := []libp2p.Option{
 		libp2p.Identity(key),
 		libp2p.ListenAddrStrings(
@@ -449,10 +402,10 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 	}
 
 	if isPrivate {
-		log.Eventf("Node Visibility: private")
+		log.WithName("mesh").Debugf("Node ForceReachabilityPrivate")
 		opts = append(opts, libp2p.ForceReachabilityPrivate())
 	} else {
-		log.Eventf("Node Visibility: public Address: %s", mc.PublicAddress)
+		log.WithName("mesh").Debugf("Node ForceReachabilityPubic Address: %s", mc.PublicAddress)
 		opts = append(opts, libp2p.ForceReachabilityPublic())
 
 		// Advertise the public endpoint as well

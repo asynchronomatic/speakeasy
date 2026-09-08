@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -162,24 +163,22 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
 
 	var models map[string]modeldex.ModelRoute
-	err := retry.Do(context.Background(), retry.WithMaxRetries(1, retry.NewFibonacci(2*time.Second)),
+	err := retry.Do(context.Background(), retry.WithMaxRetries(0, retry.NewFibonacci(2*time.Second)),
 		func(ctx context.Context) error {
 			var err error
 			models, err = client.GetModelsMesh()
 			if err != nil {
-				log.Warnf("error fetching models from peer %s: %s; retrying", peer.ID, err)
 				return retry.RetryableError(err)
 			}
 			return nil
 		})
 
 	if err != nil {
-		log.Errorf("error fetching models from peer: %s", err)
+		log.WithName("proxy").Warnf("error fetching models from peer %s: %s", peer, err)
 		return err
 	}
 
-	// merge models into out model state
-	log.WithName("proxy").Eventf("Adding peer models %+v", models)
+	log.WithName("proxy").Eventf("discovered peer models %s: %+v", peer, slices.Collect(maps.Keys(models)))
 	p.modelRouter.AddPeerModels(peer, models)
 	return nil
 }
@@ -258,7 +257,7 @@ func (p *Proxy) Serve(ctx context.Context) error {
 }
 
 func (p *Proxy) WithAdminController(admin *api.AdminClient) {
-	log.WithName("proxy").Warnf("Enabling Admin Controller")
+	log.WithName("proxy").Warnf("Enabling Admin Controller (Admin Token Configured)")
 	p.admin = admin
 }
 
@@ -293,6 +292,8 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("GET /api/mesh/models", p.uiModelsHandler)
 	p.mux.HandleFunc("GET /api/mesh/members", p.meshMembers)
 	p.mux.HandleFunc("GET /api/mesh/config", p.uiConfigHandler)
+	p.mux.HandleFunc("GET /api/mesh/debug", p.handle(p.debugGetHandler))
+	p.mux.HandleFunc("POST /api/mesh/debug", p.handle(p.debugSetHandler))
 
 	p.mux.HandleFunc("GET /api/mesh/theme", p.handle(p.themeGetHandler))
 	p.mux.HandleFunc("POST /api/mesh/theme", p.handle(p.themeSetHandler))

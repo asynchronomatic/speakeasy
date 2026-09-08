@@ -82,6 +82,7 @@ type Config struct {
 	Admin     AdminConfig `yaml:"admin"`
 	Mesh      MeshConfig  `yaml:"mesh"`
 	Providers []Provider  `yaml:"providers"`
+	Debug     bool        `yaml:"debug"`
 }
 
 func applyConfigDefaults(config *Config) {

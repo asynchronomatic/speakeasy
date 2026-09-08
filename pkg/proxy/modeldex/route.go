@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
 type LocalRoute struct {
@@ -32,7 +31,6 @@ type ModelRoute struct {
 }
 
 func (r *ModelRoute) IsLocal() bool {
-	log.Debugf("%s: local:%d", r.Name, len(r.providers))
 	return len(r.providers) != 0
 }
 
@@ -58,7 +56,6 @@ func (r *ModelRoute) GetLocalRoute() *LocalRoute {
 		return nil
 	}
 
-	log.Errorf("Local providers %s %+v", r.Name, r.providers)
 	return &LocalRoute{
 		BaseURL: r.providers[0].BaseURL,
 		Token:   r.providers[0].Token,

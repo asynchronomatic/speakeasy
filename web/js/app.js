@@ -69,6 +69,8 @@
     welcomeLocalNote: document.getElementById("welcome-local-note"),
     themeSelect: document.getElementById("theme-select"),
     themeError: document.getElementById("theme-error"),
+    debugToggle: document.getElementById("debug-toggle"),
+    debugError: document.getElementById("debug-error"),
     navAdmin: document.getElementById("nav-admin"),
     adminCount: document.getElementById("admin-count"),
     adminLocked: document.getElementById("admin-locked"),
@@ -136,6 +138,29 @@
       applyTheme(data.theme || data.Theme);
     } catch (_) {
       applyTheme(currentTheme());
+    }
+  }
+
+  function debugEnabledFrom(data) {
+    return !!(data && (data.debugEnabled || data.DebugEnabled));
+  }
+
+  async function loadDebug() {
+    if (!el.debugToggle) return;
+    const data = await getJSON("/api/mesh/debug");
+    el.debugToggle.checked = debugEnabledFrom(data);
+  }
+
+  async function saveDebug() {
+    if (!el.debugToggle) return;
+    const on = !!el.debugToggle.checked;
+    setErrorEl(el.debugError, "");
+    try {
+      const data = await sendJSON("/api/mesh/debug", "POST", { debugEnabled: on });
+      el.debugToggle.checked = debugEnabledFrom(data) || on;
+    } catch (err) {
+      el.debugToggle.checked = !on;
+      setErrorEl(el.debugError, err.message || String(err));
     }
   }
 
@@ -1089,6 +1114,12 @@
 
   async function renderSettings() {
     setErrorEl(el.providersError, "");
+    setErrorEl(el.debugError, "");
+    try {
+      await loadDebug();
+    } catch (err) {
+      setErrorEl(el.debugError, err.message || String(err));
+    }
     try {
       await loadProviders();
       renderProviders();
@@ -1543,6 +1574,7 @@
   }
 
   async function checkAdmin() {
+    if (state.view !== "admin") return;
     try {
       const data = await getJSON("/api/admin/enabled");
       const on = !!(data && (data.enabled || data.Enabled));
@@ -1643,8 +1675,9 @@
     if (name === "chat") {
       renderChatThread();
       el.chatInput.focus();
-    } else if (name === "admin" && !state.adminEnabled && el.adminToken) {
-      el.adminToken.focus();
+    } else if (name === "admin") {
+      if (!state.adminEnabled && el.adminToken) el.adminToken.focus();
+      checkAdmin();
     }
   }
 
@@ -1668,8 +1701,7 @@
       setStatus("offline", "API unavailable");
       console.error(err);
     }
-    await checkAdmin();
-    render();
+    if (state.view !== "admin") render();
   }
 
   let refreshTimer = null;
@@ -1723,10 +1755,14 @@
   });
   document.getElementById("btn-refresh").addEventListener("click", () => {
     setStatus("loading", "Refreshing");
-    refresh();
+    if (state.view === "admin") checkAdmin();
+    else refresh();
   });
   if (el.themeSelect) {
     el.themeSelect.addEventListener("change", () => saveTheme(el.themeSelect.value));
+  }
+  if (el.debugToggle) {
+    el.debugToggle.addEventListener("change", () => saveDebug());
   }
   applyTheme(currentTheme());
   loadTheme();

@@ -313,12 +313,31 @@ input:focus, .select-input:focus {
   margin-left: auto;
 }
 
+.settings-panels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px 40px;
+  margin-bottom: 28px;
+}
+
+.settings-panels .admin-section {
+  margin-bottom: 0;
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
 .settings-theme-field {
   max-width: 280px;
 }
 
 .settings-theme-field .select-input {
   width: 100%;
+}
+
+.settings-debug-toggle {
+  padding-bottom: 0;
+  min-height: 38px;
 }
 
 .conn-status {
