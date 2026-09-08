@@ -62,6 +62,28 @@ func (r *ModelRoute) GetLocalRoute() *LocalRoute {
 	}
 }
 
+// GetLocalRouteProtected returns a LocalRoute to the first non-private provider if isMesh is true, else any provider is valid.
+func (r *ModelRoute) GetLocalRouteProtected(isFromMesh bool) *LocalRoute {
+	if len(r.providers) == 0 {
+		return nil
+	}
+
+	for _, p := range r.providers {
+		// if this provider is private and the request is from the mesh
+		// do not return it... we need a public one
+		if p.Private && isFromMesh {
+			continue
+		}
+
+		return &LocalRoute{
+			BaseURL: p.BaseURL,
+			Token:   p.Token,
+		}
+	}
+
+	return nil
+}
+
 func (r *ModelRoute) AddPeer(peer core.PeerNode) {
 	if r.peers == nil {
 		r.peers = make(map[string]core.PeerNode)

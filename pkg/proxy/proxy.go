@@ -70,7 +70,7 @@ func (p *Proxy) peekModel(body []byte) string {
 	return strings.TrimPrefix(strings.ToLower(peek.Model), MeshModelPrefix)
 }
 
-func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRelay bool) {
+func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFromMesh bool) {
 	limited := io.LimitReader(r.Body, maxBody+1)
 	body, err := io.ReadAll(limited)
 	r.Body.Close()
@@ -96,9 +96,9 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 	}
 
 	// Always try local routes first
-	local := route.GetLocalRoute()
+	local := route.GetLocalRouteProtected(isFromMesh)
 	if local != nil {
-		log.Debugf(" -- Servicing via ollama node: %s\n", local.BaseURL)
+		log.WithName("proxy").Debugf(" -- Servicing via provider: %s\n", local.BaseURL)
 
 		u, err := url.Parse(local.BaseURL)
 		if err != nil {
@@ -120,10 +120,10 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, noRela
 		return
 	}
 
-	// if no relay is set, this request came in via the mesh we should not send it back to the mesh as
-	// we could loop forever
-	if noRelay {
-		log.Debugf(" -- No relay set, returning 404")
+	// if isFromMesh is set, this request came in via the mesh so we should not send it back to the mesh
+	// since this could result in infinite recursion
+	if isFromMesh {
+		log.WithName("proxy").Debugf("model %s has no public providers", model)
 		writeModelNotFound(w, r, model)
 		return
 	}
@@ -183,17 +183,16 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	return nil
 }
 
-// ServeHTTP serves an Ollama compatible api for chat completions
-//
-//	this handler is exposed to all local clients that want to use for access
-//	to local and remote models.
+// ServeHTTP serves an Open AI compatible api for chat completions
+// this handler is exposed to all local clients that want to use for access
+// to local and remote models.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cid := atomic.AddUint64(&p.cid, 1)
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	switch r.URL.Path {
-	case "/api/chat", "/v1/chat/completions", "/v1/responses":
+	switch {
+	case slices.Contains(proxyHandleURLS, r.URL.Path):
 		p.proxyModelRequest(w, r, false)
 	default: // serves from our local table
 		p.mux.ServeHTTP(w, r)
