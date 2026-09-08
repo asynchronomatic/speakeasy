@@ -150,7 +150,7 @@ func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
 		}
 
 		if knownPeer.ltime != peer.LogicalTime {
-			log.WithName("disc").Debugf("ctrl reports ltime change for peer %s  (%v!=%v)", knownPeer, knownPeer.ltime, peer.LogicalTime)
+			log.WithName("disc").Debugf("ctrl reports ltime change for peer %s  (%v!=%v)", knownPeer.node, knownPeer.ltime, peer.LogicalTime)
 			knownPeer.needsUpdate = true
 			knownPeer.ltime = peer.LogicalTime
 		}

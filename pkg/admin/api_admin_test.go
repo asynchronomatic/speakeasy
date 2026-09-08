@@ -21,6 +21,22 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 )
 
+// testHTTPClient disables keep-alives so sequential httptest servers on macOS
+// do not exhaust loopback ephemeral ports (EADDRNOTAVAIL / "can't assign requested address").
+var testHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DisableKeepAlives: true,
+	},
+}
+
+func closeIdleHTTP() {
+	testHTTPClient.CloseIdleConnections()
+	if tr, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr.CloseIdleConnections()
+	}
+}
+
 func newAdminTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
 	t.Setenv("ADMIN_DB_PATH", filepath.Join(t.TempDir(), "admin.jkv"))
@@ -31,8 +47,13 @@ func newAdminTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Cleanup(func() { _ = s.Close() })
 	s.WithAdvertiseURL("https://mesh.example:4002")
 	s.WithRelayAddresses([]string{"/ip4/1.2.3.4/tcp/4001/p2p/relay"})
-	ts := httptest.NewServer(s.routes())
-	t.Cleanup(ts.Close)
+	ts := httptest.NewUnstartedServer(s.routes())
+	ts.Config.SetKeepAlivesEnabled(false)
+	ts.Start()
+	t.Cleanup(func() {
+		ts.Close()
+		closeIdleHTTP()
+	})
 	return s, ts
 }
 
@@ -56,7 +77,7 @@ func postJSON(t *testing.T, ts *httptest.Server, method, path, token string, bod
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -45,7 +45,7 @@ func TestApiNodeLogin(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
 	req.Header.Set("Authorization", "Bearer "+login.Token)
-	authRes, err := http.DefaultClient.Do(req)
+	authRes, err := testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestApiNodeLoginExpiredSession(t *testing.T) {
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	res, err := http.DefaultClient.Do(req)
+	res, err := testHTTPClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
