@@ -208,6 +208,13 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 }
 
 func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
+	if p.auth != nil {
+		if _, status := p.auth.DoAuth(w, r); status != http.StatusOK {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	p.proxyModelRequest(w, r, false)
 }
 

@@ -47,6 +47,7 @@ type DiscoveryManager struct {
 	ctrlTime     uint64
 	registration *api.Registration
 	knownPeers   map[string]peerStatus
+	allow        *PeerAllowList
 }
 
 // FIXME: exit loop on context close
@@ -130,6 +131,14 @@ func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
 	if err != nil {
 		log.WithName("disc").Warnf("failed to get peer map from controller: %v", err)
 		return nil
+	}
+
+	if d.allow != nil {
+		ids := make([]string, 0, len(peerList))
+		for _, p := range peerList {
+			ids = append(ids, p.ID)
+		}
+		d.allow.ReplaceMembers(ids)
 	}
 
 	peerUpdates := make(map[string]peerStatus)
@@ -286,7 +295,7 @@ func (d *DiscoveryManager) Serve(ctx context.Context) error {
 	return nil
 }
 
-func NewDiscoveryManager(a *api.MeshClient, h host.Host, node core.PeerNode, MDNSEnabled bool) *DiscoveryManager {
+func NewDiscoveryManager(a *api.MeshClient, h host.Host, node core.PeerNode, MDNSEnabled bool, allow *PeerAllowList) *DiscoveryManager {
 	return &DiscoveryManager{
 		ctrl:            a,
 		h:               h,
@@ -294,5 +303,6 @@ func NewDiscoveryManager(a *api.MeshClient, h host.Host, node core.PeerNode, MDN
 		MDNSEnabled:     MDNSEnabled,
 		discoveryEvents: make(chan peerEvent, 64),
 		knownPeers:      make(map[string]peerStatus),
+		allow:           allow,
 	}
 }

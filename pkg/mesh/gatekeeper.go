@@ -35,11 +35,28 @@ func (l *GateKeeper) AllowConnect(src peer.ID, _ ma.Multiaddr, dest peer.ID) boo
 
 // --- connmgr.ConnectionGater ---
 
-func (l *GateKeeper) InterceptPeerDial(p peer.ID) bool             { return l.provider.Has(p.String()) }
+func (l *GateKeeper) InterceptPeerDial(p peer.ID) bool {
+	allow := l.provider.Has(p.String())
+	if !allow {
+		log.WithName("gate").Warnf("dial to %s denied", p)
+	}
+	return allow
+}
+
+// InterceptAddrDial stays open so hole punching can dial predicted addresses
+// for an already-allowed peer. Peer identity is checked in InterceptPeerDial.
 func (l *GateKeeper) InterceptAddrDial(peer.ID, ma.Multiaddr) bool { return true }
-func (l *GateKeeper) InterceptAccept(network.ConnMultiaddrs) bool  { return true }
+
+// InterceptAccept stays open: the remote peer ID is not known until Noise.
+// Direct/hole-punched inbound is dropped in InterceptSecured if not allow-listed.
+func (l *GateKeeper) InterceptAccept(network.ConnMultiaddrs) bool { return true }
+
 func (l *GateKeeper) InterceptSecured(_ network.Direction, p peer.ID, _ network.ConnMultiaddrs) bool {
-	return l.provider.Has(p.String())
+	allow := l.provider.Has(p.String())
+	if !allow {
+		log.WithName("gate").Warnf("secured connection from %s denied", p)
+	}
+	return allow
 }
 func (l *GateKeeper) InterceptUpgraded(network.Conn) (bool, control.DisconnectReason) {
 	return true, 0
