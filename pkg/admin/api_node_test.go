@@ -254,3 +254,58 @@ func TestMeshClientLogin(t *testing.T) {
 	err = mc.Unregister("peer-client-login")
 	assert.NoError(t, err)
 }
+
+func TestUnregisterDeletesCredentials(t *testing.T) {
+	s, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-unreg", Name: "n1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-unreg",
+		MeshSecret: join.MeshSecret,
+	})
+	var login api.NodeLoginResponse
+	if err := json.NewDecoder(res.Body).Decode(&login); err != nil {
+		res.Body.Close()
+		t.Fatal(err)
+	}
+	res.Body.Close()
+
+	reg := postJSON(t, ts, http.MethodPost, "/api/v1/nodes", login.Token, api.RegisterNodeRequest{
+		Node: api.Node{ID: "peer-unreg", Name: "n1"},
+	})
+	reg.Body.Close()
+	if reg.StatusCode != http.StatusOK {
+		t.Fatalf("register: got %d", reg.StatusCode)
+	}
+
+	unreg := postJSON(t, ts, http.MethodDelete, "/api/v1/nodes/peer-unreg", login.Token, nil)
+	unreg.Body.Close()
+	if unreg.StatusCode != http.StatusOK {
+		t.Fatalf("unregister: got %d", unreg.StatusCode)
+	}
+
+	var rec meshNodeRecord
+	err = s.kv.Get(meshNodeKVKey("default", "peer-unreg"), &rec)
+	assert.NoError(t, err)
+
+	if s.acl.Has("peer-unreg") {
+		t.Fatal("node still on ACL")
+	}
+
+	relogin := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-unreg",
+		MeshSecret: join.MeshSecret,
+	})
+	relogin.Body.Close()
+	assert.Equal(t, http.StatusOK, relogin.StatusCode)
+
+	// We can't reregister a joined node...
+	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	_, err = api.RedeemInvite(ts.URL+"/api/v1/redeem/"+fresh.InviteId, api.Node{ID: "peer-unreg", Name: "n1"})
+	assert.Error(t, err)
+
+}

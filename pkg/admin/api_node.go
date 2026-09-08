@@ -141,6 +141,8 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&resp)
 }
 
+// apiNodeUnregister does not actually leave the mesh, it just kicks itself of the network and
+// may rejoin later with its given login token
 func (s *Server) apiNodeUnregister(ctx *JsonRPC) error {
 	id := ctx.PathVar("id")
 	if id == "" {
@@ -161,12 +163,11 @@ func (s *Server) apiNodeUnregister(ctx *JsonRPC) error {
 	delete(s.nodes, id)
 	s.lock.Unlock()
 
-	s.acl.Remove(id) // can be done outside the lock
-	log.Infof("unregistered node %s", id)
-
 	if !ok {
 		return api.NewError(http.StatusNotFound, "node not found")
 	}
+
+	s.acl.Remove(id)
 	return ctx.ReplyObject(&node)
 }
 

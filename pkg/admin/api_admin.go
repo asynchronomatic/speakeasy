@@ -163,6 +163,16 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 		req.Node.Name = invite.InviteAs
 	}
 
+	nodeKey := meshNodeKVKey(invite.MeshId, req.Node.ID)
+	var existing meshNodeRecord
+	err := s.kv.Get(nodeKey, &existing)
+	if err == nil {
+		return api.NewError(http.StatusConflict, "node already registered")
+	}
+	if !errors.Is(err, jsonkv.ErrNotFound) {
+		return err
+	}
+
 	s.acl.Add(req.Node.ID)
 
 	secret, err := newNodeLoginSecret()
@@ -174,7 +184,7 @@ func (s *Server) adminRedeemInviteLink(ctx *JsonRPC) error {
 		return err
 	}
 
-	if err := s.kv.Put(meshNodeKVKey(invite.MeshId, req.Node.ID), meshNodeRecord{
+	if err := s.kv.Put(nodeKey, meshNodeRecord{
 		NodeID:       req.Node.ID,
 		Name:         req.Node.Name,
 		AddedAt:      time.Now().UTC(),
@@ -293,6 +303,19 @@ func (s *Server) adminListNodes(ctx *JsonRPC) error {
 	return ctx.ReplyObject(&api.ListAdminNodesResponse{Nodes: nodes})
 }
 
+func (s *Server) deleteNodeCredentials(id string) error {
+	keys, err := s.meshKeysForNode(id)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := s.kv.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) meshKeysForNode(id string) ([]string, error) {
 	var keys []string
 	err := s.kv.ForEach("/mesh/", func(key string, data []byte) error {
@@ -344,10 +367,8 @@ func (s *Server) adminDeleteNode(ctx *JsonRPC) error {
 	if len(keys) == 0 && !registered {
 		return api.NewError(http.StatusNotFound, "node not found")
 	}
-	for _, key := range keys {
-		if err := s.kv.Delete(key); err != nil {
-			return err
-		}
+	if err := s.deleteNodeCredentials(id); err != nil {
+		return err
 	}
 
 	return ctx.ReplyObject(&api.DeleteNodeResponse{NodeID: id})
