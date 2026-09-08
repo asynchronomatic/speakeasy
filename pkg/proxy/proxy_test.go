@@ -92,7 +92,7 @@ func TestNewProxy(t *testing.T) {
 		_ = core.RunInterruptibleContext(context.Background(), proxyLeft, proxyRight)
 	}()
 
-	client := NewMeshClient("", &testable.Doer{
+	client := NewProxyClient("proxy.left", &testable.Doer{
 		Handler: proxyLeft.ServeHTTP,
 	})
 
@@ -100,9 +100,7 @@ func TestNewProxy(t *testing.T) {
 	retries := 10
 	for {
 		members, err := client.GetMeshMembers()
-		if err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, err)
 
 		if len(members) == 2 {
 			break

@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -10,13 +13,19 @@ const SessionTokenPrefix = "mesh-"
 type SessionAuthFunc func(token string) (*Properties, bool)
 
 type TokenAuth struct {
-	users   map[string]TokenUser
+	tokens  map[string]TokenUser
 	session SessionAuthFunc
 }
 
 type TokenUser struct {
-	User  string
-	Group string
+	User         string
+	Group        string
+	PasswordHash []byte
+}
+
+func hashPassword(password string) string {
+	sum := sha256.Sum256([]byte(password))
+	return hex.EncodeToString(sum[:])
 }
 
 func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
@@ -40,34 +49,37 @@ func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties,
 			return user, http.StatusOK
 		}
 
-		user, ok := a.users[token]
+		presented := hashPassword(token)
+		u, ok := a.tokens[presented]
 		if !ok {
 			return nil, http.StatusUnauthorized
 		}
 
 		return &Properties{
-			User:  user.User,
-			Group: user.Group,
+			User:  u.User,
+			Group: u.Group,
 		}, http.StatusOK
-
 	}
 	return nil, http.StatusUnauthorized
 }
 
-func (a *TokenAuth) AddUser(user string, group string, password string) error {
-	a.users[password] = TokenUser{
+// AddToken the token maps to a specific user
+func (a *TokenAuth) AddToken(token string, user string, group string) error {
+	user = strings.TrimSpace(user)
+	if user == "" || token == "" {
+		return errors.New("user and password are required")
+	}
+
+	hashed := hashPassword(token)
+	a.tokens[hashed] = TokenUser{
 		User:  user,
 		Group: group,
 	}
 	return nil
 }
 
-func (a *TokenAuth) DeleteUser(user string) error {
-	return nil
-}
-
 func NewTokenAuth() *TokenAuth {
 	return &TokenAuth{
-		users: make(map[string]TokenUser),
+		tokens: make(map[string]TokenUser),
 	}
 }

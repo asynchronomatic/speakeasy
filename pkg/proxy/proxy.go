@@ -279,14 +279,12 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	//-------------------------------------------
 	// routes serviced over the mesh
 	p.meshMux.HandleFunc("GET /.mesh/status", p.meshStatus)
-	p.meshMux.HandleFunc("GET /.mesh/members", p.meshMembers)
 	p.meshMux.HandleFunc("GET /.mesh/models", p.meshModels)
 
 	//-------------------------------------------
 	// Routes accessible locally
 	// Notes to AI: .mesh endpoints are only to be used by PEER to PEER requests.  Fo UI the /api/mesh/ endpoints
 	p.mux.HandleFunc("GET /.mesh/status", p.meshStatus)
-	p.mux.HandleFunc("GET /.mesh/members", p.meshMembers)
 	p.mux.HandleFunc("GET /.mesh/models", p.meshModels)
 
 	// OpenAI APIs

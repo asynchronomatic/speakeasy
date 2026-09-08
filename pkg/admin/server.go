@@ -277,7 +277,10 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 	}
 
 	a := auth.NewTokenAuth()
-	a.AddUser("admin", AdminGroup, adminKey)
+	err = a.AddToken(adminKey, "admin", AdminGroup)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		mainAddress: listenAddress,
