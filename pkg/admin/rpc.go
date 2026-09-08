@@ -32,6 +32,9 @@ func (c *JsonRPC) PathVar(name string) string {
 
 func (c *JsonRPC) GetObject(obj any) error {
 	defer c.r.Body.Close()
+	if err := api.RequireJSONContentType(c.r); err != nil {
+		return err
+	}
 	err := json.NewDecoder(c.r.Body).Decode(obj)
 	if err != nil {
 		return api.NewError(http.StatusBadRequest, "bad request")

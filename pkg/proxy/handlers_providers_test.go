@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
@@ -270,6 +272,32 @@ func TestProviderUpdateMissing(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("update missing status %d", res.StatusCode)
+	}
+}
+
+func TestProviderRejectsNonJSONContentType(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := testProxy(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
+	req.Header.Set("Content-Type", "text/plain")
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d want 415", rec.Code)
+	}
+}
+
+func TestProviderRejectsCrossOrigin(t *testing.T) {
+	writeTestConfig(t, testConfigYAML)
+	p := testProxy(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
+	req.Host = "127.0.0.1:4080"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://evil.example")
+	rec := httptest.NewRecorder()
+	p.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status %d want 403", rec.Code)
 	}
 }
 

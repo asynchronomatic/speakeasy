@@ -168,6 +168,43 @@ func TestAdminCreateInviteLinkRequiresMeshID(t *testing.T) {
 	}
 }
 
+func TestAdminMutatingJSONRequiresJSONContentType(t *testing.T) {
+	_, ts := newAdminTestServer(t)
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/invite", strings.NewReader(`{"MeshId":"default"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer test-secret")
+	req.Header.Set("Content-Type", "text/plain")
+	res, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("status %d want 415", res.StatusCode)
+	}
+}
+
+func TestAdminMutatingRejectsCrossOrigin(t *testing.T) {
+	_, ts := newAdminTestServer(t)
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/invite", strings.NewReader(`{"MeshId":"default"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer test-secret")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://evil.example")
+	res, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status %d want 403", res.StatusCode)
+	}
+}
+
 func TestAdminRedeemInviteLink(t *testing.T) {
 	s, ts := newAdminTestServer(t)
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})

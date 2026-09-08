@@ -77,6 +77,11 @@ func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
 			s.logRequest(r, "--", start)
 		}()
 
+		if err := api.RequireSameOrigin(r); err != nil {
+			rejectSameOrigin(w, err)
+			return
+		}
+
 		ctx := &JsonRPC{w: w, r: r, user: nil}
 		if err := fn(ctx); err != nil {
 			if ce, ok := err.(*api.Error); ok {
@@ -88,12 +93,25 @@ func (s *Server) handle(fn func(*JsonRPC) error) http.HandlerFunc {
 	}
 }
 
+func rejectSameOrigin(w http.ResponseWriter, err error) {
+	if ce, ok := err.(*api.Error); ok {
+		http.Error(w, ce.Message(), ce.Code())
+		return
+	}
+	http.Error(w, err.Error(), http.StatusForbidden)
+}
+
 func (s *Server) authenticated(fn func(*JsonRPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() {
 			s.logRequest(r, "--", start)
 		}()
+
+		if err := api.RequireSameOrigin(r); err != nil {
+			rejectSameOrigin(w, err)
+			return
+		}
 
 		user, code := s.auth.DoAuth(w, r)
 		if code != http.StatusOK {

@@ -28,6 +28,15 @@ func (p *Proxy) handle(fn func(*RPC) error) http.HandlerFunc {
 			p.logRequest(r, "--", start)
 		}()
 
+		if err := api.RequireSameOrigin(r); err != nil {
+			if ce, ok := err.(*api.Error); ok {
+				http.Error(w, ce.Message(), ce.Code())
+			} else {
+				http.Error(w, err.Error(), http.StatusForbidden)
+			}
+			return
+		}
+
 		rpc := &RPC{w: w, r: r}
 		if err := fn(rpc); err != nil {
 			if ce, ok := err.(*api.Error); ok {
