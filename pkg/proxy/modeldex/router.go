@@ -22,6 +22,7 @@ type ModelRouter struct {
 	providers  []core.Provider // configured providers for rescanning
 	lock       sync.Mutex
 	MeshModels map[string]ModelRoute // MeshModelswill be forwarded out
+	httpClient *http.Client
 }
 
 // ListExportedModels returns a list of models exported from our instance
@@ -71,18 +72,16 @@ func (e *ModelRouter) modelsFromWhitelist(provider *core.Provider) map[string]Mo
 func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]ModelRoute, error) {
 	models := make(map[string]ModelRoute)
 
-	/*
-		whitelist := make(map[string]ModelRoute)
-		if provider.Discovery == "whitelist" {
-			whitelist = e.modelsFromWhitelist(provider)
-		}*/
+	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
+		return nil, err
+	}
 
 	u, err := url.Parse(provider.BaseURL)
 	if err != nil {
 		return nil, err
 	}
 
-	client := api.NewClient(u, http.DefaultClient)
+	client := api.NewClient(u, e.httpClient)
 	ctx := context.Background()
 
 	resp, err := client.List(ctx) // GET /api/tags
@@ -147,7 +146,10 @@ func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]Mod
 }
 
 func (e *ModelRouter) openaiFetchModels(provider *core.Provider) (map[string]ModelRoute, error) {
-	client := jsonclient.NewClient(provider.BaseURL, provider.Token)
+	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
+		return nil, err
+	}
+	client := jsonclient.NewClient(provider.BaseURL, provider.Token).WithDoer(e.httpClient)
 
 	whitelist := make(map[string]ModelRoute)
 	if provider.Discovery == "whitelist" {
@@ -273,10 +275,14 @@ func (e *ModelRouter) GetModelRoute(model string) *ModelRoute {
 	return nil
 }
 
-func NewModelDiscovery(node core.PeerNode, providers []core.Provider) *ModelRouter {
+func NewModelDiscovery(node core.PeerNode, providers []core.Provider, httpClient *http.Client) *ModelRouter {
+	if httpClient == nil {
+		httpClient = core.NewProviderHTTPClient(false)
+	}
 	return &ModelRouter{
 		node:       node,
 		providers:  providers,
 		MeshModels: make(map[string]ModelRoute),
+		httpClient: httpClient,
 	}
 }

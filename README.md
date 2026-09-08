@@ -88,6 +88,7 @@ All runtime settings are in `./config.yaml`. `mesh init` writes a commented file
 ```yaml
 proxy:
   listen: ":8080"          # local Ollama/OpenAI proxy + UI
+  allow_private_backends: true  # required for local Ollama at 127.0.0.1
 
 mesh:
   name: ""                 # empty → hostname

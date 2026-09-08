@@ -75,15 +75,15 @@ func (s *Server) apiNodeRegister(ctx *JsonRPC) error {
 
 	resp := api.RegisterNodeRequest{
 		Node:        req.Node,
-		Token:       newNodeToken(),
+		InstanceID:  newNodeToken(),
 		LastUpdate:  s.lastUpdate,
 		LogicalTime: s.logicalTime,
 	}
 
 	s.nodes[req.Node.ID] = &NodeReference{
-		Node:     req.Node,
-		LastPing: time.Now(),
-		Token:    resp.Token,
+		Node:       req.Node,
+		LastPing:   time.Now(),
+		InstanceID: resp.InstanceID,
 	}
 	s.lock.Unlock()
 	log.Infof("registered node %s", resp.Node.ID)
@@ -112,7 +112,7 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 	}
 
 	updateNode := func(req *api.RegisterNodeRequest) bool {
-		if req.Token == "" {
+		if req.InstanceID == "" {
 			log.Errorf("node token is required for %s", id)
 			return false
 		}
@@ -123,7 +123,7 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 			return false
 		}
 
-		if ref.Token != req.Token {
+		if ref.InstanceID != req.InstanceID {
 			log.Errorf("token mismatch in refresh for %s", id)
 			return false
 		}
@@ -132,8 +132,8 @@ func (s *Server) apiNodeRefresh(ctx *JsonRPC) error {
 	}
 
 	resp := api.RegisterNodeRequest{
-		Node:  req.Node,
-		Token: req.Token,
+		Node:       req.Node,
+		InstanceID: req.InstanceID,
 	}
 	s.lock.Lock()
 	resp.LogicalTime = s.logicalTime

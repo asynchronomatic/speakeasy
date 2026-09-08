@@ -80,11 +80,11 @@ func TestNewProxy(t *testing.T) {
 	testMeshLeft := orch.NewMeshNode("000001", "left")
 	testMeshRight := orch.NewMeshNode("000002", "right")
 
-	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil)
+	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
 
-	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders)
+	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
 

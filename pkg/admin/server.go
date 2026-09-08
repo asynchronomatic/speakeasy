@@ -23,9 +23,9 @@ import (
 var BuildVersion string
 
 type NodeReference struct {
-	Node     api.Node
-	Token    string
-	LastPing time.Time
+	Node       api.Node
+	InstanceID string
+	LastPing   time.Time
 }
 
 type Server struct {

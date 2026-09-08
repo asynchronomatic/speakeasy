@@ -23,7 +23,7 @@ type Node = core.PeerNode
 
 type RegisterNodeRequest struct {
 	Node        Node
-	Token       string
+	InstanceID  string
 	LogicalTime uint64
 	LastUpdate  time.Time
 }
@@ -57,17 +57,17 @@ type MeshClient struct {
 }
 
 type Registration struct {
-	transport jsonclient.Transport
-	node      Node
-	token     string
+	transport  jsonclient.Transport
+	node       Node
+	instanceID string // unique id of this registration instance
 }
 
 type RegisterNodeResponse = RegisterNodeRequest
 
 func (r *Registration) Refresh() (bool, uint64, error) {
 	req := RegisterNodeRequest{
-		Node:  r.node,
-		Token: r.token,
+		Node:       r.node,
+		InstanceID: r.instanceID,
 	}
 
 	resp := RegisterNodeResponse{}
@@ -81,7 +81,7 @@ func (r *Registration) Refresh() (bool, uint64, error) {
 		}
 		return false, 0, err
 	}
-	r.token = resp.Token
+	r.instanceID = resp.InstanceID
 	return true, resp.LogicalTime, nil
 }
 
@@ -161,8 +161,8 @@ func (c *MeshClient) Register(name string, id string) (*Registration, error) {
 		return nil, err
 	}
 	return &Registration{
-		transport: c.transport,
-		node:      resp.Node,
-		token:     resp.Token,
+		transport:  c.transport,
+		node:       resp.Node,
+		instanceID: resp.InstanceID,
 	}, nil
 }

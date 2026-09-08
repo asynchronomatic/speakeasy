@@ -39,6 +39,7 @@ providers:
 		t.Fatalf("providers %+v", cfg.Providers)
 	}
 
+	cfg.Proxy.AllowPrivateBackends = true
 	cfg.Providers = append(cfg.Providers, Provider{
 		ID:        "cloud",
 		Type:      "openai",
@@ -57,6 +58,9 @@ providers:
 	}
 	if again.Proxy.Listen != ":9" || again.Admin.Secret != "s" || again.Mesh.Address != "http://example" {
 		t.Fatalf("other fields changed: %+v", again)
+	}
+	if !again.Proxy.AllowPrivateBackends {
+		t.Fatal("allow_private_backends not saved")
 	}
 	if len(again.Providers) != 2 || again.Providers[1].ID != "cloud" || again.Providers[1].Token != "tok" {
 		t.Fatalf("saved providers %+v", again.Providers)

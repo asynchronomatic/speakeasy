@@ -208,6 +208,7 @@ func configFromInvite(resp *api.RedeemInviteResponse, existing *core.Config) *co
 func defaultJoinConfig() *core.Config {
 	cfg := &core.Config{}
 	cfg.Proxy.Listen = core.DefaultProxyListen
+	cfg.Proxy.AllowPrivateBackends = true
 	cfg.Admin.AdminPort = core.DefaultAdminPort
 	cfg.Admin.RelayPort = core.DefaultRelayPort
 	cfg.Admin.PublicAddress = "auto"

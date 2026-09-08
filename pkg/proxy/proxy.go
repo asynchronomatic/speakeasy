@@ -11,7 +11,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -61,6 +60,9 @@ type Proxy struct {
 
 	notifier    *socket.Notifier
 	modelRouter *modeldex.ModelRouter
+
+	allowPrivate bool
+	providerRT   http.RoundTripper
 }
 
 func (p *Proxy) peekModel(body []byte) string {
@@ -102,10 +104,10 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	if local != nil {
 		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model)
 
-		u, err := url.Parse(local.BaseURL)
+		u, err := core.ParseProviderURL(local.BaseURL, p.allowPrivate)
 		if err != nil {
-			log.WithName("proxy").Errorf("failed to parse local provider URL: %v", err)
-			writeModelNotFound(w, r, model)
+			log.WithName("proxy").Errorf("provider url not allowed: %v", err)
+			http.Error(w, "provider url not allowed", http.StatusBadGateway)
 			return
 		}
 
@@ -114,15 +116,10 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 		proxy.Director = func(req *http.Request) {
 			orig(req)
 			req.Host = u.Host
-			if local.Token != "" {
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
-			} else {
-				// prune bad authorization
-				delete(req.Header, "Authorization")
-			}
-			delete(req.Header, "Origin") // also remove origin
-
+			scrubProviderRequest(req, local.Token)
 		}
+		proxy.Transport = p.providerRT
+		proxy.ModifyResponse = rejectProviderRedirect
 		proxy.ServeHTTP(w, r)
 		return
 	}
@@ -145,6 +142,26 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	log.Debugf(" -- Servicing via mesh node: %s\n", destNode)
 	p.mesh.ProxyToNode(*destNode, w, r)
 	return
+}
+
+func scrubProviderRequest(req *http.Request, token string) {
+	req.Header.Del("Authorization")
+	req.Header.Del("Proxy-Authorization")
+	req.Header.Del("Cookie")
+	req.Header.Del("X-Api-Key")
+	req.Header.Del("Origin")
+	if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	}
+}
+
+func rejectProviderRedirect(resp *http.Response) error {
+	switch resp.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return core.ErrProviderRedirect
+	}
+	return nil
 }
 
 // OnPeerUpdate handles the addition or removal of a peer and updates the meshRoutes accordingly.
@@ -278,18 +295,20 @@ func (p *Proxy) WithAuthToken(token string) {
 
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
-func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider) (*Proxy, error) {
-
-	modelRouter := modeldex.NewModelDiscovery(meshService.Node(), providers)
+func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider, allowPrivateBackends bool) (*Proxy, error) {
+	providerRT := core.NewProviderTransport(allowPrivateBackends)
+	modelRouter := modeldex.NewModelDiscovery(meshService.Node(), providers, core.NewProviderHTTPClientTransport(providerRT))
 	modelRouter.Refresh()
 
 	p := &Proxy{
-		listen:      listen,
-		mux:         http.NewServeMux(),
-		meshMux:     http.NewServeMux(),
-		mesh:        meshService,
-		modelRouter: modelRouter,
-		notifier:    socket.NewNotifier(),
+		listen:       listen,
+		mux:          http.NewServeMux(),
+		meshMux:      http.NewServeMux(),
+		mesh:         meshService,
+		modelRouter:  modelRouter,
+		notifier:     socket.NewNotifier(),
+		allowPrivate: allowPrivateBackends,
+		providerRT:   providerRT,
 	}
 
 	//-------------------------------------------
