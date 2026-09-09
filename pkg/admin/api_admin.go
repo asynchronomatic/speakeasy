@@ -19,6 +19,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 type inviteSecret struct {
@@ -134,6 +135,12 @@ func (s *Server) adminRedeemInviteLink(ctx *jsonrpc.RPC) error {
 	if inviteID == "" {
 		return jsonrpc.NewError(http.StatusBadRequest, "invite id is required")
 	}
+
+	ip := security.ClientHost(ctx.Request())
+	if security.AuthBlocked(ip) {
+		return jsonrpc.NewError(http.StatusTooManyRequests, "too many requests")
+	}
+	security.AuthFailure(ip)
 
 	s.lock.Lock()
 	defer s.lock.Unlock()

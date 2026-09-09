@@ -1,6 +1,7 @@
 package security
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -55,6 +56,16 @@ func ClientAddr(r *http.Request) string {
 		}
 	}
 	return SanitizeLog(r.RemoteAddr)
+}
+
+// ClientHost is ClientAddr without the port, for per-IP rate limits.
+func ClientHost(r *http.Request) string {
+	addr := ClientAddr(r)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
 }
 
 // RequestPath is r.URL.Path with control characters stripped.

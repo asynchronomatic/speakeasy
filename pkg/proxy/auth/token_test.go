@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func bearerReq(token string) *http.Request {
@@ -16,7 +14,7 @@ func bearerReq(token string) *http.Request {
 	return req
 }
 
-func TestAddUserHashesPassword(t *testing.T) {
+func TestAddTokenHashesPassword(t *testing.T) {
 	a := NewTokenAuth()
 	if err := a.AddToken("secret", "admin", "admin"); err != nil {
 		t.Fatal(err)
@@ -56,11 +54,12 @@ func TestDoAuthRejectsEmptyBearer(t *testing.T) {
 	}
 }
 
-func TestAddUserRequiresFields(t *testing.T) {
-	var err error
+func TestAddTokenRequiresFields(t *testing.T) {
 	a := NewTokenAuth()
-	err = a.AddToken("secret", "", "admin")
-	assert.Error(t, err)
-	err = a.AddToken("", "admin", "admin")
-	assert.Error(t, err)
+	if err := a.AddToken("secret", "", "admin"); err == nil {
+		t.Fatal("expected error")
+	}
+	if err := a.AddToken("", "admin", "admin"); err == nil {
+		t.Fatal("expected error")
+	}
 }

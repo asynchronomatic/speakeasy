@@ -67,7 +67,7 @@ func (p *Proxy) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 
 		user, code := p.auth.DoAuth(w, r)
 		if code != http.StatusOK {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			security.WriteAuthError(w, code)
 			return
 		}
 
@@ -96,7 +96,7 @@ func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) 
 	if p.auth != nil {
 		if !p.consumeWSTicket(r) {
 			if _, code := p.auth.DoAuth(w, r); code != http.StatusOK {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				security.WriteAuthError(w, code)
 				return
 			}
 		}

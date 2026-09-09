@@ -185,6 +185,25 @@ func TestSessionRejectedAfterKick(t *testing.T) {
 	}
 }
 
+func TestApiNodeLoginRateLimit(t *testing.T) {
+	_, ts := newAdminTestServer(t)
+	t.Setenv("SPEAKEASY_AUTH_RATE_MAX", "2")
+
+	req := api.NodeLoginRequest{NodeID: "missing", MeshSecret: "x"}
+	for i := 0; i < 2; i++ {
+		res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", req)
+		res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: got %d want 401", i, res.StatusCode)
+		}
+	}
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", req)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("got %d want 429", res.StatusCode)
+	}
+}
+
 func TestApiNodeLoginRejectsUnknownNode(t *testing.T) {
 	_, ts := newAdminTestServer(t)
 	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{

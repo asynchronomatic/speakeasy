@@ -17,6 +17,7 @@ import (
 
 func testNewServer(t *testing.T, addr, secret string) *Server {
 	t.Helper()
+	t.Setenv("SPEAKEASY_AUTH_RATE_MAX", "0")
 	t.Setenv("ADMIN_DB_PATH", filepath.Join(t.TempDir(), "admin.jkv"))
 	s, err := NewServer(addr, secret)
 	if err != nil {

@@ -26,6 +26,7 @@ func testProxy(t *testing.T) *Proxy {
 
 func newTestProxy(t *testing.T, providers []core.Provider, allowPrivate bool) *Proxy {
 	t.Helper()
+	t.Setenv("SPEAKEASY_AUTH_RATE_MAX", "0")
 	orch := testable.NewMeshOrchestrator()
 	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", providers, allowPrivate)
 	if err != nil {

@@ -63,7 +63,7 @@ func (s *Server) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 
 		user, code := s.auth.DoAuth(w, r)
 		if code != http.StatusOK {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			security.WriteAuthError(w, code)
 			return
 		}
 

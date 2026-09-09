@@ -16,22 +16,10 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 var SessionTokenTTL = 10 * time.Minute
-
-// dummyLoginHash is a real bcrypt hash so unknown-node logins pay the same
-// CompareHashAndPassword cost as a wrong password. The dummy secret is never
-// accepted: login still fails when the node record is missing.
-var dummyLoginHash []byte
-
-func init() {
-	h, err := bcrypt.GenerateFromPassword([]byte("speakeasy-dummy-login-not-a-real-secret"), bcrypt.DefaultCost)
-	if err != nil {
-		panic("admin: dummy login hash: " + err.Error())
-	}
-	dummyLoginHash = h
-}
 
 func (s *Server) apiNodeAuthorize(ctx *jsonrpc.RPC) error {
 	var req api.RegisterNodeRequest
@@ -276,6 +264,10 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 	if req.NodeID == "" || req.MeshSecret == "" {
 		return jsonrpc.NewError(http.StatusBadRequest, "node id and mesh secret are required")
 	}
+	ip := security.ClientHost(ctx.Request())
+	if security.AuthBlocked(ip) {
+		return jsonrpc.NewError(http.StatusTooManyRequests, "too many requests")
+	}
 	meshID := req.MeshId
 	if meshID == "" {
 		meshID = "default"
@@ -284,8 +276,8 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 	var rec meshNodeRecord
 
 	if err := s.kv.Get(meshNodeKVKey(meshID, req.NodeID), &rec); err != nil {
-		// fake compare in the fail path to not allow attacker to determine miss/hit on nodeID
-		_ = bcrypt.CompareHashAndPassword(dummyLoginHash, []byte(req.MeshSecret))
+		security.DummySecretMatch(req.MeshSecret)
+		security.AuthFailure(ip)
 		if errors.Is(err, jsonkv.ErrNotFound) {
 			return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 		}
@@ -294,6 +286,7 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 
 	mismatch := bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(req.MeshSecret)) != nil
 	if mismatch {
+		security.AuthFailure(ip)
 		return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 

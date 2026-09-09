@@ -1,11 +1,12 @@
 package auth
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
+
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 const SessionTokenPrefix = "mesh-"
@@ -13,8 +14,11 @@ const SessionTokenPrefix = "mesh-"
 type SessionAuthFunc func(token string) (*Properties, bool)
 
 type TokenAuth struct {
-	tokens  map[string]TokenUser
-	session SessionAuthFunc
+	mu       sync.Mutex
+	creds    []TokenUser
+	verified []verifiedToken
+	macKey   []byte
+	session  SessionAuthFunc
 }
 
 type TokenUser struct {
@@ -23,63 +27,94 @@ type TokenUser struct {
 	PasswordHash []byte
 }
 
-func hashPassword(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
+type verifiedToken struct {
+	mac  []byte
+	user TokenUser
 }
 
 func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
 	a.session = fn
 }
 
+func (a *TokenAuth) lookupVerified(mac []byte) *TokenUser {
+	for i := range a.verified {
+		if security.MACEqual(a.verified[i].mac, mac) {
+			u := a.verified[i].user
+			return &u
+		}
+	}
+	return nil
+}
+
 func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
 	auth := r.Header.Get("Authorization")
 	const prefix = "bearer "
-	if len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix) {
-		token := strings.TrimSpace(auth[len(prefix):])
+	if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return nil, http.StatusUnauthorized
+	}
+	token := strings.TrimSpace(auth[len(prefix):])
+	if token == "" {
+		return nil, http.StatusUnauthorized
+	}
 
-		if strings.HasPrefix(token, SessionTokenPrefix) {
-			if a.session == nil {
-				return nil, http.StatusUnauthorized
-			}
-			user, ok := a.session(token)
-			if !ok || user == nil {
-				return nil, http.StatusUnauthorized
-			}
-			return user, http.StatusOK
-		}
-
-		presented := hashPassword(token)
-		u, ok := a.tokens[presented]
-		if !ok {
+	if strings.HasPrefix(token, SessionTokenPrefix) {
+		if a.session == nil {
 			return nil, http.StatusUnauthorized
 		}
-
-		return &Properties{
-			User:  u.User,
-			Group: u.Group,
-		}, http.StatusOK
+		user, ok := a.session(token)
+		if !ok || user == nil {
+			return nil, http.StatusUnauthorized
+		}
+		return user, http.StatusOK
 	}
+
+	ip := security.ClientHost(r)
+	if security.AuthBlocked(ip) {
+		return nil, http.StatusTooManyRequests
+	}
+
+	mac := security.TokenMAC(a.macKey, token)
+	a.mu.Lock()
+	if u := a.lookupVerified(mac); u != nil {
+		a.mu.Unlock()
+		return &Properties{User: u.User, Group: u.Group}, http.StatusOK
+	}
+	creds := a.creds
+	a.mu.Unlock()
+
+	for i := range creds {
+		if security.SecretMatch(creds[i].PasswordHash, token) {
+			a.mu.Lock()
+			a.verified = append(a.verified, verifiedToken{mac: mac, user: creds[i]})
+			a.mu.Unlock()
+			return &Properties{User: creds[i].User, Group: creds[i].Group}, http.StatusOK
+		}
+	}
+
+	security.DummySecretMatch(token)
+	security.AuthFailure(ip)
 	return nil, http.StatusUnauthorized
 }
 
-// AddToken the token maps to a specific user
 func (a *TokenAuth) AddToken(token string, user string, group string) error {
 	user = strings.TrimSpace(user)
 	if user == "" || token == "" {
 		return errors.New("user and password are required")
 	}
-
-	hashed := hashPassword(token)
-	a.tokens[hashed] = TokenUser{
-		User:  user,
-		Group: group,
+	hashed, err := security.HashSecret(token)
+	if err != nil {
+		return err
 	}
+	a.mu.Lock()
+	a.creds = append(a.creds, TokenUser{User: user, Group: group, PasswordHash: hashed})
+	a.mu.Unlock()
 	return nil
 }
 
 func NewTokenAuth() *TokenAuth {
-	return &TokenAuth{
-		tokens: make(map[string]TokenUser),
+	key, err := security.NewMACKey()
+	if err != nil {
+		panic(err)
 	}
+	return &TokenAuth{macKey: key}
 }

@@ -39,6 +39,7 @@ func closeIdleHTTP() {
 
 func newAdminTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
+	t.Setenv("SPEAKEASY_AUTH_RATE_MAX", "0")
 	t.Setenv("ADMIN_DB_PATH", filepath.Join(t.TempDir(), "admin.jkv"))
 	s, err := NewServer(":0", "test-secret")
 	if err != nil {
