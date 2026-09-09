@@ -3,11 +3,18 @@ package jsonrpc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
+
+var ErrRedirectsDisabled = errors.New("redirects disabled")
+
+func denyRedirect(*http.Request, []*http.Request) error {
+	return ErrRedirectsDisabled
+}
 
 type Doer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -81,7 +88,7 @@ func (c *Client) Do(method, location string, in any, out any) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", resp.Status, string(data))
+		return fmt.Errorf("%s", resp.Status)
 	}
 
 	if out != nil {
@@ -138,8 +145,9 @@ func NewClient(address, token string) *Client {
 		token:   token,
 		opts:    make(map[string]string),
 		rt: &http.Client{
-			Timeout:   15 * time.Second,
-			Transport: t,
+			Timeout:       15 * time.Second,
+			Transport:     t,
+			CheckRedirect: denyRedirect,
 		},
 	}
 
