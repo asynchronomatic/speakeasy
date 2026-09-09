@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/negrel/assert"
 	"github.com/sethvargo/go-retry"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -57,7 +58,7 @@ type Proxy struct {
 	mesh    core.MeshServiceProvider
 
 	admin *api.AdminClient
-	auth  *auth.TokenAuth
+	auth  *auth.UserAuth
 	lock  sync.RWMutex
 
 	notifier    *socket.Notifier
@@ -297,16 +298,15 @@ func (p *Proxy) Serve(ctx context.Context) error {
 }
 
 func (p *Proxy) WithAdminController(admin *api.AdminClient) {
-	log.WithName("proxy").Warnf("Enabling Admin Controller (Admin Token Configured)")
+	log.WithName("proxy").Warnf("Enabled Admin Controller (Admin Token Configured)")
 	p.admin = admin
 }
 
 func (p *Proxy) WithAdminToken(token string) {
-	if token != "" {
-		p.auth = auth.NewTokenAuth()
-		p.auth.AddToken(token, jsonrpc.AdminUser, jsonrpc.AdminGroup)
-		log.WithName("proxy").Warnf("Enabling Token Authentication (Token Configured)")
-	}
+	assert.NotNil(token)
+	p.auth = auth.NewUserAuth()
+	p.auth.WithUser(jsonrpc.AdminUser, jsonrpc.AdminGroup, token)
+	log.WithName("proxy").Warnf("Enabled UI Authentication")
 }
 
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
@@ -349,7 +349,8 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 
 	// Secure endpoint
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
-	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
+	p.mux.HandleFunc("POST /api/mesh/login", p.handle(p.loginHandler))
+
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))

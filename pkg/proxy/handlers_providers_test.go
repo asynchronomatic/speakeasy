@@ -1,14 +1,15 @@
 package proxy
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 )
@@ -37,26 +38,15 @@ providers:
   model_discovery: pinned
 `
 
-func decodeProviderList(t *testing.T, res *http.Response) []core.Provider {
-	t.Helper()
-	defer res.Body.Close()
-	var body providersListResponse
-	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	return body.Providers
-}
-
 func TestProvidersList(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil)
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("status %d: %s", res.StatusCode, b)
-	}
-	got := decodeProviderList(t, res)
+
+	resp := providersListResponse{}
+	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil, &resp)
+	assert.NoError(t, err)
+
+	got := resp.Providers
 	if len(got) != 1 || got[0].ID != "local" || got[0].Type != "ollama" {
 		t.Fatalf("list %+v", got)
 	}
@@ -72,8 +62,11 @@ mesh:
   address: http://x
 `)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil)
-	got := decodeProviderList(t, res)
+	resp := providersListResponse{}
+	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil, &resp)
+	assert.NoError(t, err)
+
+	got := resp.Providers
 	if got == nil || len(got) != 0 {
 		t.Fatalf("want empty list, got %+v", got)
 	}
@@ -83,97 +76,68 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
 
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	var added core.Provider
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
 		ID:        "cloud",
 		Type:      "openai",
 		BaseURL:   "https://api.example",
 		Token:     "tok",
 		Private:   true,
 		Discovery: "whitelist",
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("add %d: %s", res.StatusCode, b)
-	}
-	var added core.Provider
-	if err := json.NewDecoder(res.Body).Decode(&added); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if added.ID != "cloud" || added.BaseURL != "https://api.example" || !added.Private {
-		t.Fatalf("added %+v", added)
-	}
-	if added.Token != "" {
-		t.Fatalf("add leaked token %q", added.Token)
-	}
+	}, &added)
+	assert.NoError(t, err)
+	assert.Equal(t, "cloud", added.ID)
+	assert.Equal(t, "openai", added.Type)
+	assert.Equal(t, "https://api.example", added.BaseURL)
+	assert.Equal(t, "", added.Token)
+	assert.Equal(t, true, added.Private)
+	assert.Equal(t, "whitelist", added.Discovery)
 
 	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Mesh.Address != "http://10.0.0.1:4002" || cfg.Proxy.Listen != ":4080" {
-		t.Fatalf("non-provider fields changed: %+v", cfg)
-	}
-	if len(cfg.Providers) != 2 {
-		t.Fatalf("providers %+v", cfg.Providers)
-	}
+	require.NoError(t, err)
+
+	assert.Equal(t, "http://10.0.0.1:4002", cfg.Mesh.Address)
+	assert.Equal(t, ":4080", cfg.Proxy.Listen)
+	assert.Equal(t, 2, len(cfg.Providers))
+
 	local, cloud := cfg.Providers[0], cfg.Providers[1]
 	if local.ID != "local" {
 		local, cloud = cloud, local
 	}
-	if local.Token != "secret-local" {
-		t.Fatalf("add wiped local token: %+v", cfg.Providers)
-	}
-	if cloud.ID != "cloud" || cloud.Token != "tok" {
-		t.Fatalf("added provider on disk %+v", cloud)
-	}
+	assert.Equal(t, "secret-local", local.Token)
+	assert.Equal(t, "tok", cloud.Token)
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	var updated core.Provider
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "new-tok",
 		Private:   false,
 		Discovery: "all",
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("update %d: %s", res.StatusCode, b)
-	}
-	var updated core.Provider
-	if err := json.NewDecoder(res.Body).Decode(&updated); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if updated.ID != "cloud" || updated.BaseURL != "https://api.example/v1" || updated.Private {
-		t.Fatalf("updated %+v", updated)
-	}
-	if updated.Token != "" {
-		t.Fatalf("update leaked token %q", updated.Token)
-	}
+	}, &updated)
+	assert.NoError(t, err)
+	assert.Equal(t, "cloud", updated.ID)
+	assert.Equal(t, "openai", updated.Type)
+	assert.Equal(t, "https://api.example/v1", updated.BaseURL)
+	assert.Equal(t, "", updated.Token)
+	assert.Equal(t, false, updated.Private)
+	assert.Equal(t, "all", updated.Discovery)
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	var gotCloud core.Provider
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "*",
 		Private:   false,
 		Discovery: "all",
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("keep-token update %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	}, &gotCloud)
+	assert.NoError(t, err)
 
 	cfg, err = core.LoadConfigFile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gotCloud core.Provider
+
 	for _, pr := range cfg.Providers {
 		if pr.ID == "cloud" {
 			gotCloud = pr
@@ -182,23 +146,17 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 			t.Fatalf("local token after update %q", pr.Token)
 		}
 	}
-	if gotCloud.Token != "new-tok" {
-		t.Fatalf("cloud token after keep update %q", gotCloud.Token)
-	}
+	assert.Equal(t, "new-tok", gotCloud.Token)
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "",
 		Private:   false,
 		Discovery: "all",
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("empty-token update %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	}, nil)
+	assert.NoError(t, err)
+
 	cfg, err = core.LoadConfigFile()
 	if err != nil {
 		t.Fatal(err)
@@ -209,58 +167,43 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 		}
 	}
 
-	listed := decodeProviderList(t, doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil))
-	for _, pr := range listed {
+	var resp providersListResponse
+	err = doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil, &resp)
+	assert.NoError(t, err)
+
+	for _, pr := range resp.Providers {
 		if pr.Token != "" {
 			t.Fatalf("list leaked token for %s: %q", pr.ID, pr.Token)
 		}
 	}
 
-	res = doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/cloud", nil)
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("delete %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	err = doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/cloud", nil, nil)
+	assert.NoError(t, err)
 
 	cfg, err = core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" {
-		t.Fatalf("after delete %+v", cfg.Providers)
-	}
-	if cfg.Providers[0].Token != "secret-local" {
-		t.Fatalf("delete wiped local token %q", cfg.Providers[0].Token)
-	}
-	if cfg.Mesh.Name != "box" {
-		t.Fatalf("mesh name %q", cfg.Mesh.Name)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, len(cfg.Providers))
+	assert.Equal(t, "local", cfg.Providers[0].ID)
+	assert.Equal(t, "secret-local", cfg.Providers[0].Token)
+	assert.Equal(t, "box", cfg.Mesh.Name)
 }
 
 func TestProviderAddDuplicate(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
 		ID:      "local",
 		Type:    "ollama",
 		BaseURL: "http://127.0.0.1:11434",
-	})
-	res.Body.Close()
-	if res.StatusCode != http.StatusConflict {
-		t.Fatalf("duplicate status %d", res.StatusCode)
-	}
+	}, nil)
+	assert.Equal(t, http.StatusConflict, statusCode(err))
 }
 
 func TestProviderAddRequiresFields(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{Type: "ollama", BaseURL: "http://x"})
-	res.Body.Close()
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing id status %d", res.StatusCode)
-	}
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{Type: "ollama", BaseURL: "http://x"}, nil)
+	assert.Equal(t, http.StatusBadRequest, statusCode(err))
 }
 
 func TestProviderAddRejectsUnsafeURL(t *testing.T) {
@@ -273,59 +216,48 @@ func TestProviderAddRejectsUnsafeURL(t *testing.T) {
 		{ID: "d", Type: "ollama", BaseURL: "http://user:pass@example.com"},
 	}
 	for _, prov := range cases {
-		res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", prov)
-		res.Body.Close()
-		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("%s status %d want 400", prov.BaseURL, res.StatusCode)
-		}
+		err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", prov, nil)
+		assert.Equal(t, http.StatusBadRequest, statusCode(err))
 	}
 }
 
 func TestProviderAddRejectsPrivateWithoutOptIn(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := newTestProxy(t, nil, false)
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
 		ID:      "local2",
 		Type:    "ollama",
 		BaseURL: "http://127.0.0.1:11434",
-	})
-	res.Body.Close()
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status %d want 400", res.StatusCode)
-	}
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, statusCode(err))
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
 		ID:      "cloud",
 		Type:    "openai",
 		BaseURL: "https://api.example",
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("public url %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	}, nil)
+	assert.NoError(t, err)
 }
 
 func TestProviderUpdateMissing(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/nope", core.Provider{
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/nope", core.Provider{
 		Type:    "ollama",
 		BaseURL: "http://x",
-	})
-	res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("update missing status %d", res.StatusCode)
-	}
+	}, nil)
+	assert.Equal(t, http.StatusNotFound, statusCode(err))
 }
 
 func TestProviderRejectsNonJSONContentType(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
 
+	token := getLoginToken(t, p, ProxyLoginSecret)
+	assert.NotEqual(t, "", token)
+
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "text/plain")
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
@@ -339,7 +271,7 @@ func TestProviderRejectsCrossOrigin(t *testing.T) {
 	p := testProxy(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
 	req.Host = "127.0.0.1:4080"
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginSecret))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://evil.example")
 	rec := httptest.NewRecorder()
@@ -352,9 +284,7 @@ func TestProviderRejectsCrossOrigin(t *testing.T) {
 func TestProviderDeleteMissing(t *testing.T) {
 	writeTestConfig(t, testConfigYAML)
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/nope", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("delete missing status %d", res.StatusCode)
-	}
+	p.WithAdminToken(ProxyLoginSecret)
+	err := doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/nope", nil, nil)
+	assert.Equal(t, http.StatusNotFound, statusCode(err))
 }

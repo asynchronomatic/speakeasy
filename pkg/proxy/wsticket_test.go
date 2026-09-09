@@ -10,27 +10,36 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 func TestRefreshTicketRequiresAuth(t *testing.T) {
 	p := testProxy(t)
 	p.WithAdminToken("sekrit")
-	res := doProxyJSON(t, p, http.MethodPost, "/api/mesh/refresh/ticket", map[string]any{})
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status %d want 401", res.StatusCode)
-	}
+
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+
+	err := client.Do(http.MethodPost, "/api/mesh/refresh/ticket", map[string]any{}, nil)
+	assert.Equal(t, http.StatusUnauthorized, statusCode(err))
 }
 
 func TestRefreshTicketSetsCookie(t *testing.T) {
 	p := testProxy(t)
 	p.WithAdminToken("sekrit")
+
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+	token, err := client.LoginGetToken("admin", "sekrit")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/refresh/ticket", strings.NewReader("{}"))
-	req.Header.Set("Authorization", "Bearer sekrit")
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	p.ServeHTTP(rec, req)
-	res := rec.Result()
+
+	res := client.DoRaw(req)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(res.Body)
@@ -61,12 +70,17 @@ func TestRefreshTicketSetsCookie(t *testing.T) {
 func TestWebsocketQueryTokenRejected(t *testing.T) {
 	p := testProxy(t)
 	p.WithAdminToken("sekrit")
-	req := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket?access_token=sekrit", nil)
-	rec := httptest.NewRecorder()
-	p.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status %d want 401", rec.Code)
-	}
+
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+	token, err := client.LoginGetToken("admin", "sekrit")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket?access_token="+token, nil)
+
+	res := client.DoRaw(req)
+	require.NotNil(t, res)
+	assert.Equal(t, http.StatusUnauthorized, res.StatusCode)
 }
 
 func TestWebsocketUpgradeWithTicket(t *testing.T) {
@@ -76,11 +90,16 @@ func TestWebsocketUpgradeWithTicket(t *testing.T) {
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
 
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+	token, err := client.LoginGetToken("admin", "sekrit")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
 	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/mesh/refresh/ticket", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer sekrit")
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := ts.Client().Do(req)
 	if err != nil {
@@ -124,9 +143,14 @@ func TestWebsocketUpgradeWithBearer(t *testing.T) {
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
 
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+	token, err := client.LoginGetToken("admin", "sekrit")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/v.1/refresh/websocket"
 	hdr := http.Header{}
-	hdr.Set("Authorization", "Bearer sekrit")
+	hdr.Set("Authorization", "Bearer "+token)
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, hdr)
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +172,7 @@ func TestWSTicketExpires(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: wsTicketCookie, Value: raw})
 	rec := httptest.NewRecorder()
 	p.WithAdminToken("sekrit")
+
 	p.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expired ticket status %d", rec.Code)

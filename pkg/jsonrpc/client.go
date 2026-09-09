@@ -88,7 +88,7 @@ func (c *Client) Do(method, location string, in any, out any) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s", resp.Status)
+		return NewError(resp.StatusCode, resp.Status)
 	}
 
 	if out != nil {

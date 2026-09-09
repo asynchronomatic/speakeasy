@@ -880,6 +880,12 @@ input[type="datetime-local"]:focus, input[type="date"]:focus {
   width: 100%;
 }
 
+#login-overlay .admin-field input[readonly] {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.85;
+}
+
 #login-overlay .muted {
   margin: 0;
 }

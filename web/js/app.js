@@ -10,7 +10,6 @@
     filter: "",
     nodesFilter: "",
     error: null,
-    authRequired: false,
     proxyToken: "",
     appStarted: false,
     adminEnabled: false,
@@ -97,8 +96,10 @@
     adminCopy: document.getElementById("admin-invite-copy"),
     adminInvitesBody: document.getElementById("admin-invites-body"),
     adminNodesBody: document.getElementById("admin-nodes-body"),
+    app: document.getElementById("app"),
     loginOverlay: document.getElementById("login-overlay"),
     loginForm: document.getElementById("login-form"),
+    loginUsername: document.getElementById("login-username"),
     loginPassword: document.getElementById("login-password"),
     loginError: document.getElementById("login-error"),
   };
@@ -200,6 +201,7 @@
     el.loginOverlay.hidden = false;
     el.loginOverlay.classList.remove("hidden");
     setErrorEl(el.loginError, "");
+    if (el.loginUsername) el.loginUsername.value = "admin";
     if (el.loginPassword) {
       el.loginPassword.value = "";
       el.loginPassword.focus();
@@ -215,9 +217,8 @@
 
   async function getJSON(path) {
     const res = await fetch(path, { headers: authHeaders() });
-    if (res.status === 401 && state.authRequired) {
-      setProxyToken("");
-      showLoginOverlay();
+    if (res.status === 401) {
+      requireLogin();
       throw new Error("unauthorized");
     }
     if (!res.ok) {
@@ -232,9 +233,8 @@
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: body == null ? undefined : JSON.stringify(body),
     });
-    if (res.status === 401 && state.authRequired) {
-      setProxyToken("");
-      showLoginOverlay();
+    if (res.status === 401) {
+      requireLogin();
       throw new Error("unauthorized");
     }
     if (!res.ok) {
@@ -246,37 +246,48 @@
     return res.json();
   }
 
-  async function authRequired() {
-    const res = await fetch("/api/mesh/auth", { headers: { Accept: "application/json" } });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return !!(data && (data.required || data.Required));
-  }
-
   async function verifyProxyToken() {
     const res = await fetch("/api/mesh/models", { headers: authHeaders() });
     return res.ok;
   }
 
+  function showApp() {
+    if (!el.app) return;
+    el.app.hidden = false;
+    el.app.classList.remove("hidden");
+  }
+
+  function hideApp() {
+    if (!el.app) return;
+    el.app.hidden = true;
+    el.app.classList.add("hidden");
+  }
+
+  function requireLogin() {
+    setProxyToken("");
+    hideApp();
+    showLoginOverlay();
+  }
+
   function startApp() {
-    if (state.appStarted) return;
-    state.appStarted = true;
     hideLoginOverlay();
+    showApp();
+    if (state.appStarted) {
+      refresh();
+      return;
+    }
+    state.appStarted = true;
     loadTheme();
+    renderWelcome();
+    renderChatThread();
+    updateChatControls();
     refresh();
     connectRefreshSocket();
   }
 
   async function bootAuth() {
-    try {
-      state.authRequired = await authRequired();
-    } catch (_) {
-      state.authRequired = false;
-    }
-    if (!state.authRequired) {
-      startApp();
-      return;
-    }
+    showLoginOverlay();
+    hideApp();
     const stored = loadStoredToken();
     if (stored) {
       setProxyToken(stored);
@@ -288,22 +299,36 @@
       } catch (_) {}
       setProxyToken("");
     }
-    showLoginOverlay();
+    if (el.loginUsername) el.loginUsername.value = "admin";
+    if (el.loginPassword) el.loginPassword.focus();
   }
 
   async function submitLogin(e) {
     e.preventDefault();
-    const password = (el.loginPassword && el.loginPassword.value) || "";
+    if (el.loginUsername) el.loginUsername.value = "admin";
+    const password = ((el.loginPassword && el.loginPassword.value) || "").trim();
     setErrorEl(el.loginError, "");
     const submit = document.getElementById("login-submit");
     if (submit) submit.disabled = true;
-    setProxyToken(password.trim());
     try {
-      if (!(await verifyProxyToken())) {
+      const res = await fetch("/api/mesh/login", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ user: "admin", password }),
+      });
+      if (!res.ok) {
         setProxyToken("");
         setErrorEl(el.loginError, "Invalid password");
         return;
       }
+      const data = await res.json();
+      const token = (data && (data.token || data.Token)) || "";
+      if (!token) {
+        setProxyToken("");
+        setErrorEl(el.loginError, "Invalid password");
+        return;
+      }
+      setProxyToken(token);
       startApp();
     } catch (err) {
       setProxyToken("");
@@ -1871,7 +1896,6 @@
   }
 
   async function issueRefreshTicket() {
-    if (!state.authRequired) return;
     await sendJSON("/api/mesh/refresh/ticket", "POST", {});
   }
 
@@ -2112,8 +2136,5 @@
     });
   }
 
-  renderWelcome();
-  renderChatThread();
-  updateChatControls();
   bootAuth();
 })();

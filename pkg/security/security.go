@@ -8,6 +8,10 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
+const (
+	ErrorUnauthorized = "unauthorized"
+)
+
 var DefaultAllowedHeaders = map[string]bool{
 	"Content-Type": true,
 	"X-Request-Id": true,

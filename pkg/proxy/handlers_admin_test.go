@@ -1,10 +1,8 @@
 package proxy
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +15,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
-var ProxyLoginToken = "test-password"
+var ProxyLoginSecret = "test-password"
 
 func testProxy(t *testing.T) *Proxy {
 	t.Helper()
@@ -32,34 +30,33 @@ func newTestProxy(t *testing.T, providers []core.Provider, allowPrivate bool) *P
 		t.Fatal(err)
 	}
 
-	p.WithAdminToken(ProxyLoginToken)
+	p.WithAdminToken(ProxyLoginSecret)
 	return p
 }
-
-func doProxyJSON(t *testing.T, p *Proxy, method, path string, body any) *http.Response {
+func doProxyJSONNoLogin(t *testing.T, p *Proxy, method, path string, in, out any) error {
 	t.Helper()
-	var r io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		r = bytes.NewReader(b)
-	}
-	req := httptest.NewRequest(method, path, r)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	rec := httptest.NewRecorder()
-	p.ServeHTTP(rec, req)
-	return rec.Result()
+	return testable.NewProxyClient("proxy", p.ServeHTTP).Do(method, path, in, out)
+}
+
+func doProxyJSON(t *testing.T, p *Proxy, method, path string, in, out any) error {
+	t.Helper()
+	client := testable.NewProxyClient("proxy", p.ServeHTTP)
+	err := client.Login("admin", ProxyLoginSecret)
+	assert.NoError(t, err)
+	return client.Do(method, path, in, out)
+}
+
+func getLoginToken(t *testing.T, p *Proxy, secret string) string {
+	t.Helper()
+	token, err := testable.NewProxyClient("proxy", p.ServeHTTP).LoginGetToken("admin", secret)
+	assert.NoError(t, err)
+	return token
 }
 
 func TestSecurityHeaders(t *testing.T) {
 	p := testProxy(t)
 	req := httptest.NewRequest(http.MethodGet, "/ui/", nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginSecret))
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
 	res := rec.Result()
@@ -92,81 +89,59 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestAuthRequiredOff(t *testing.T) {
+func TestMeshAPIRequiresLogin(t *testing.T) {
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/auth", nil)
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", res.StatusCode)
-	}
-	var got struct {
-		Required bool `json:"required"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	assert.True(t, got.Required)
+	p.WithAdminToken(ProxyLoginSecret)
+
+	err := doProxyJSONNoLogin(t, p, http.MethodGet, "/api/mesh/models", nil, nil)
+	assert.Equal(t, http.StatusUnauthorized, statusCode(err))
+
+	err = doProxyJSON(t, p, http.MethodGet, "/api/mesh/models", nil, nil)
+	assert.NoError(t, err)
 }
 
-func TestAuthRequiredOn(t *testing.T) {
+func TestMeshLoginIssuesSessionToken(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
 
-	res := doProxyJSON(t, p, http.MethodGet, "/api/mesh/auth", nil)
-	if res.StatusCode != http.StatusOK {
-		res.Body.Close()
-		t.Fatalf("auth status %d", res.StatusCode)
-	}
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/login", map[string]string{
+		"user":     "admin",
+		"password": "wrong",
+	}, nil)
+	assert.Equal(t, http.StatusUnauthorized, statusCode(err))
+
 	var got struct {
-		Required bool `json:"required"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if !got.Required {
-		t.Fatal("expected required=true")
+		Token string `json:"token"`
 	}
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/mesh/models", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("models without token %d want 401", res.StatusCode)
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/login", map[string]string{
+		"user":     "admin",
+		"password": ProxyLoginSecret,
+	}, &got)
+	assert.NoError(t, err)
+
+	if got.Token == "" || got.Token == ProxyLoginSecret {
+		t.Fatalf("token %q", got.Token)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/mesh/models", nil)
-	req.Header.Set("Authorization", "Bearer sekrit")
+	req.Header.Set("Authorization", "Bearer "+got.Token)
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("models with token %d want 200", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
-	rec = httptest.NewRecorder()
-	p.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("ws without token %d want 401", rec.Code)
+		t.Fatalf("models with session %d want 200", rec.Code)
 	}
 }
 
 func TestAdminEnabledOff(t *testing.T) {
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status %d want 200", res.StatusCode)
-	}
-	var got struct {
+
+	got := struct {
 		Enabled bool `json:"enabled"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Enabled {
-		t.Fatal("expected enabled=false")
-	}
+	}{}
+
+	err := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil, &got)
+	assert.NoError(t, err)
+	assert.False(t, got.Enabled)
 }
 
 func TestAdminEnableToken(t *testing.T) {
@@ -190,36 +165,22 @@ func TestAdminEnableToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.WithAdminToken(ProxyLoginToken)
+	p.WithAdminToken(ProxyLoginSecret)
 
-	res := doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": ""})
-	if res.StatusCode != http.StatusBadRequest {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("empty token %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	err = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": ""}, nil)
+	assert.Equal(t, http.StatusBadRequest, statusCode(err))
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "bad-token"})
-	if res.StatusCode != http.StatusPreconditionFailed {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("bad token %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	err = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "bad-token"}, nil)
+	assert.Equal(t, http.StatusPreconditionFailed, statusCode(err))
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
 	var status struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if status.Enabled {
-		t.Fatal("enabled after bad token")
-	}
+
+	err = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil, &status)
+	assert.NoError(t, err)
+	assert.Equal(t, false, status.Enabled)
+
 	cfg, err := core.LoadConfigFile()
 	if err != nil {
 		t.Fatal(err)
@@ -228,41 +189,20 @@ func TestAdminEnableToken(t *testing.T) {
 		t.Fatalf("secret changed after bad token: %q", cfg.Admin.Secret)
 	}
 
-	res = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "good-token"})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("good token %d: %s", res.StatusCode, b)
-	}
-	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if !status.Enabled {
-		t.Fatal("expected enabled=true")
-	}
+	err = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "good-token"}, &status)
+	assert.NoError(t, err)
+	assert.Equal(t, true, status.Enabled)
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
-	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if !status.Enabled {
-		t.Fatal("GET enabled still false after enable")
-	}
+	err = doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil, &status)
+	assert.NoError(t, err)
+	assert.Equal(t, true, status.Enabled)
 
 	cfg, err = core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Admin.Secret != "good-token" {
-		t.Fatalf("secret not saved: %q", cfg.Admin.Secret)
-	}
-	if cfg.Mesh.Name != "box" || len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" {
-		t.Fatalf("other config fields changed: %+v", cfg)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "good-token", cfg.Admin.Secret)
+	assert.Equal(t, "box", cfg.Mesh.Name)
+	assert.Equal(t, 1, len(cfg.Providers))
+	assert.Equal(t, "local", cfg.Providers[0].ID)
 }
 
 func TestAdminEnabledOn(t *testing.T) {
@@ -271,28 +211,21 @@ func TestAdminEnabledOn(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	p := testProxy(t)
-	p.WithAdminController(api.NewClient(upstream.URL, "secret").Admin())
-	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil)
-	defer res.Body.Close()
 	var got struct {
 		Enabled bool `json:"enabled"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if !got.Enabled {
-		t.Fatal("expected enabled=true")
-	}
+
+	p := testProxy(t)
+	p.WithAdminController(api.NewClient(upstream.URL, "secret").Admin())
+	err := doProxyJSON(t, p, http.MethodGet, "/api/admin/enabled", nil, &got)
+	assert.NoError(t, err)
+	assert.True(t, got.Enabled)
 }
 
 func TestAdminInvitesUnavailable(t *testing.T) {
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("list status %d", res.StatusCode)
-	}
+	err := doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil, nil)
+	assert.Equal(t, http.StatusServiceUnavailable, statusCode(err))
 }
 
 func TestAdminInviteCRUD(t *testing.T) {
@@ -340,68 +273,40 @@ func TestAdminInviteCRUD(t *testing.T) {
 	p := testProxy(t)
 	p.WithAdminController(api.NewClient(ts.URL, "secret").Admin())
 
-	res := doProxyJSON(t, p, http.MethodPost, "/api/admin/invite", api.CreateInviteRequest{
+	var created api.CreateInviteResponse
+	err := doProxyJSON(t, p, http.MethodPost, "/api/admin/invite", api.CreateInviteRequest{
 		Name:        "guest",
 		Reusable:    false,
 		LifetimeSec: api.DefaultInviteLifetimeSec,
-	})
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("create %d: %s", res.StatusCode, b)
-	}
-	var created api.CreateInviteResponse
-	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if created.InviteId != "abc123" || created.InviteLink == "" {
-		t.Fatalf("created %+v", created)
-	}
+	}, &created)
+	assert.NoError(t, err)
+	assert.Equal(t, "abc123", created.InviteId)
+	assert.NotEqual(t, "", created.InviteLink)
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil)
 	var listed api.ListInvitesResponse
-	if err := json.NewDecoder(res.Body).Decode(&listed); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if len(listed.Invites) != 1 || listed.Invites[0].Name != "guest" || listed.Invites[0].Reusable {
-		t.Fatalf("listed %+v", listed.Invites)
-	}
+	err = doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil, &listed)
+	assert.NoError(t, err)
+	assert.Len(t, listed.Invites, 1)
+	assert.Equal(t, "guest", listed.Invites[0].Name)
+	assert.False(t, listed.Invites[0].Reusable)
 
-	res = doProxyJSON(t, p, http.MethodDelete, "/api/admin/invite/abc123", nil)
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("revoke %d: %s", res.StatusCode, b)
-	}
-	res.Body.Close()
+	err = doProxyJSON(t, p, http.MethodDelete, "/api/admin/invite/abc123", nil, nil)
+	assert.NoError(t, err)
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil)
-	if err := json.NewDecoder(res.Body).Decode(&listed); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if len(listed.Invites) != 0 {
-		t.Fatalf("after revoke %+v", listed.Invites)
-	}
+	err = doProxyJSON(t, p, http.MethodGet, "/api/admin/invite", nil, &listed)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(listed.Invites))
+
 }
 
 func TestAdminNodesUnavailable(t *testing.T) {
 	p := testProxy(t)
-	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("list status %d", res.StatusCode)
-	}
-	res = doProxyJSON(t, p, http.MethodDelete, "/api/admin/node/peer-1", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("kick status %d", res.StatusCode)
-	}
+
+	err := doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil, nil)
+	assert.Equal(t, http.StatusServiceUnavailable, statusCode(err))
+
+	err = doProxyJSON(t, p, http.MethodDelete, "/api/admin/node/peer-1", nil, nil)
+	assert.Equal(t, http.StatusServiceUnavailable, statusCode(err))
 }
 
 func TestAdminNodeListAndKick(t *testing.T) {
@@ -429,45 +334,18 @@ func TestAdminNodeListAndKick(t *testing.T) {
 	p := testProxy(t)
 	p.WithAdminController(api.NewClient(ts.URL, "secret").Admin())
 
-	res := doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil)
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("list %d: %s", res.StatusCode, b)
-	}
 	var listed api.ListAdminNodesResponse
-	if err := json.NewDecoder(res.Body).Decode(&listed); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if len(listed.Nodes) != 1 || listed.Nodes[0].ID != "peer-1" {
-		t.Fatalf("listed %+v", listed.Nodes)
-	}
+	err := doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil, &listed)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(listed.Nodes))
+	assert.Equal(t, "peer-1", listed.Nodes[0].ID)
 
-	res = doProxyJSON(t, p, http.MethodDelete, "/api/admin/node/peer-1", nil)
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		t.Fatalf("kick %d: %s", res.StatusCode, b)
-	}
 	var kicked api.KickPeerResponse
-	if err := json.NewDecoder(res.Body).Decode(&kicked); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if kicked.NodeID != "peer-1" {
-		t.Fatalf("kicked %+v", kicked)
-	}
+	err = doProxyJSON(t, p, http.MethodDelete, "/api/admin/node/peer-1", nil, &kicked)
+	assert.NoError(t, err)
+	assert.Equal(t, "peer-1", kicked.NodeID)
 
-	res = doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil)
-	if err := json.NewDecoder(res.Body).Decode(&listed); err != nil {
-		res.Body.Close()
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if len(listed.Nodes) != 0 {
-		t.Fatalf("after kick %+v", listed.Nodes)
-	}
+	err = doProxyJSON(t, p, http.MethodGet, "/api/admin/node", nil, &listed)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(listed.Nodes))
 }
