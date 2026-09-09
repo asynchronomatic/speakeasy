@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -12,28 +11,19 @@ import (
 )
 
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	host := r.Header.Get("x-forwarded-for")
-	if host == "" {
-		host = r.RemoteAddr
-	}
-	user := "--"
-
-	log.WithName("admin").Errorf("%s %s %d -- %s %s\n", host, user, http.StatusOK, r.Method, r.URL.Path)
-	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "404 Not Found: %s", r.URL.Path)
+	log.WithName("admin").Errorf("%s %s %d -- %s %s\n", security.ClientAddr(r), "--", http.StatusNotFound, security.RequestMethod(r), security.RequestPath(r))
+	http.Error(w, "404 Not Found", http.StatusNotFound)
 }
 
 func (s *Server) logRequest(r *http.Request, user string, start time.Time) {
-	host := r.Header.Get("x-forwarded-for")
-	if host == "" {
-		host = r.RemoteAddr
-	}
 	if user == "" {
 		user = "--"
+	} else {
+		user = security.SanitizeLog(user)
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
+	log.WithName("admin").Infof("%s %s %s %s %s\n", security.ClientAddr(r), d.String(), user, security.RequestMethod(r), security.RequestPath(r))
 }
 
 func (s *Server) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {

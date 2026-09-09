@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,6 +56,35 @@ func TestAdminSecurityHeaders(t *testing.T) {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q in %q", want, csp)
 		}
+	}
+}
+
+func TestAdminNotFoundDoesNotReflectPath(t *testing.T) {
+	s := testNewServer(t, ":0", "test-secret")
+	ts := httptest.NewUnstartedServer(s.routes())
+	ts.Config.SetKeepAlivesEnabled(false)
+	ts.Start()
+	t.Cleanup(func() {
+		ts.Close()
+		closeIdleHTTP()
+	})
+
+	const marker = "/unique-404-probe"
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+marker, nil)
+	res, err := testHTTPClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), marker) {
+		t.Fatalf("404 reflected path: %q", body)
 	}
 }
 

@@ -13,16 +13,15 @@ import (
 )
 
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
-	host := r.Header.Get("x-forwarded-for")
-	if host == "" {
-		host = r.RemoteAddr
-	}
+	host := security.ClientAddr(r)
 	if user == "" {
 		user = "--"
+	} else {
+		user = security.SanitizeLog(user)
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, r.Method, r.URL.Path)
+	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, security.RequestMethod(r), security.RequestPath(r))
 }
 
 func (p *Proxy) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
