@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
@@ -76,6 +77,14 @@ var testProviders = []core.Provider{
 	},
 }
 
+func statusCode(err error) int {
+	var je *jsonrpc.Error
+	if errors.As(err, &je) {
+		return je.Code()
+	}
+	return -1 // client error
+}
+
 func TestNewProxy(t *testing.T) {
 	orch := testable.NewMeshOrchestrator()
 
@@ -85,12 +94,12 @@ func TestNewProxy(t *testing.T) {
 	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyLeft.WithAdminToken(ProxyLoginToken)
+	proxyLeft.WithAdminToken(ProxyLoginSecret)
 
 	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyRight.WithAdminToken(ProxyLoginToken)
+	proxyRight.WithAdminToken(ProxyLoginSecret)
 
 	go func() {
 		_ = core.RunInterruptibleContext(context.Background(), proxyLeft, proxyRight)
@@ -98,10 +107,12 @@ func TestNewProxy(t *testing.T) {
 
 	client := NewProxyClient("proxy.left", &testable.Doer{
 		Handler: func(w http.ResponseWriter, r *http.Request) {
-			r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginToken))
 			proxyLeft.ServeHTTP(w, r)
 		},
 	})
+
+	err = client.Login("admin", ProxyLoginSecret)
+	assert.NoError(t, err)
 
 	// Wait for both nodes to come online
 	retries := 10

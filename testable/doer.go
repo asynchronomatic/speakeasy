@@ -22,8 +22,8 @@ func (td *Doer) Do(req *http.Request) (*http.Response, error) {
 	rw := NewTestResponseWriter()
 	td.Handler(rw, req)
 
-	fmt.Printf("Request: %s", req.URL.Path)
-	fmt.Printf("Response: %s", string(rw.s.Bytes()))
+	//fmt.Printf("Request: %s", req.URL.Path)
+	//fmt.Printf("Response: %s", string(rw.s.Bytes()))
 
 	buf := bufio.NewReader(bytes.NewReader(rw.s.Bytes()))
 	return http.ReadResponse(buf, req)

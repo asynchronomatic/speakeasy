@@ -86,12 +86,6 @@ func (p *Proxy) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	}
 }
 
-func (p *Proxy) authRequiredHandler(rpc *jsonrpc.RPC) error {
-	return rpc.ReplyObject(&struct {
-		Required bool `json:"required"`
-	}{Required: p.auth != nil})
-}
-
 func (p *Proxy) refreshWebsocketHandler(w http.ResponseWriter, r *http.Request) {
 	if p.auth != nil {
 		if !p.consumeWSTicket(r) {
@@ -111,4 +105,33 @@ func (p *Proxy) withAdmin(fn func(*jsonrpc.RPC) error) func(*jsonrpc.RPC) error 
 		}
 		return fn(rpc)
 	}
+}
+
+func (p *Proxy) loginHandler(rpc *jsonrpc.RPC) error {
+	if p.auth == nil {
+		return jsonrpc.NewError(http.StatusUnauthorized, security.ErrorUnauthorized)
+	}
+
+	req := struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}{}
+
+	err := rpc.GetObject(&req)
+	if err != nil {
+		return jsonrpc.NewError(http.StatusUnauthorized, security.ErrorUnauthorized)
+	}
+
+	token, code := p.auth.LoginApi(req.User, req.Password)
+	if code != http.StatusOK {
+		return jsonrpc.NewError(code, security.ErrorUnauthorized)
+	}
+
+	resp := struct {
+		Token string `json:"token"`
+	}{
+		Token: token,
+	}
+
+	return rpc.ReplyObject(&resp)
 }

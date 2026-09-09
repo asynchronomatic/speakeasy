@@ -13,7 +13,32 @@
   <link rel="stylesheet" href="/ui/css/styles.css">
 </head>
 <body>
-  <div id="app" class="dashboard">
+  <div id="login-overlay" class="modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card modal-card-invite">
+      <div class="modal-header">
+        <h3 id="login-title">Sign in</h3>
+      </div>
+      <form id="login-form" class="modal-form">
+        <div class="modal-body">
+          <p class="muted">Sign in to open the dashboard.</p>
+          <label class="admin-field">
+            <span>Username</span>
+            <input type="text" id="login-username" value="admin" readonly tabindex="-1" autocomplete="username">
+          </label>
+          <label class="admin-field">
+            <span>Password</span>
+            <input type="password" id="login-password" value="" placeholder="password" autocomplete="current-password" required>
+          </label>
+          <p id="login-error" class="admin-error hidden" hidden></p>
+        </div>
+        <div class="modal-footer-actions">
+          <button type="submit" class="btn btn-primary" id="login-submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="app" class="dashboard hidden" hidden>
     <header class="topbar">
       <div class="topbar-left">
         <svg class="logo-mark sm" viewBox="0 0 48 48" aria-hidden="true">
@@ -397,27 +422,6 @@
           </div>
         </section>
       </main>
-    </div>
-  </div>
-  <div id="login-overlay" class="modal hidden" hidden>
-    <div class="modal-backdrop"></div>
-    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="login-title">
-      <div class="modal-header">
-        <h3 id="login-title">Sign in</h3>
-      </div>
-      <form id="login-form" class="modal-form">
-        <div class="modal-body">
-          <p class="muted">This proxy is password protected.</p>
-          <label class="admin-field">
-            <span>Password</span>
-            <input type="password" id="login-password" placeholder="proxy password" autocomplete="current-password" required>
-          </label>
-          <p id="login-error" class="admin-error hidden" hidden></p>
-        </div>
-        <div class="modal-footer-actions">
-          <button type="submit" class="btn btn-primary" id="login-submit">Sign in</button>
-        </div>
-      </form>
     </div>
   </div>
   <div id="admin-invite-modal" class="modal hidden" hidden>
