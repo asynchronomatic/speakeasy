@@ -145,5 +145,10 @@ func MustLoadConfig() *Config {
 		log.Fatalf("Mesh.Address must be set in config.yaml")
 	}
 
+	if config.Debug {
+		log.Default.SetLevel(log.LogAll)
+	} else {
+		log.Default.SetLevel(log.LogNormal)
+	}
 	return config
 }

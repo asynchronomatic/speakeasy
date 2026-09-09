@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -181,6 +182,25 @@ func TestSessionRejectedAfterKick(t *testing.T) {
 	relogin.Body.Close()
 	if relogin.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("login after kick: got %d want 401", relogin.StatusCode)
+	}
+}
+
+func TestApiNodeLoginRejectsUnknownNode(t *testing.T) {
+	_, ts := newAdminTestServer(t)
+	res := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
+		NodeID:     "peer-does-not-exist",
+		MeshSecret: "any-secret",
+	})
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unknown node: got %d want 401", res.StatusCode)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "invalid credentials") {
+		t.Fatalf("body %q", body)
 	}
 }
 

@@ -70,10 +70,19 @@ func TestSecurityHeaders(t *testing.T) {
 	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
 		t.Fatalf("X-Frame-Options %q", got)
 	}
+	if got := res.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy %q", got)
+	}
+	if got := res.Header.Get("Permissions-Policy"); !strings.Contains(got, "camera=()") {
+		t.Fatalf("Permissions-Policy %q", got)
+	}
 	csp := res.Header.Get("Content-Security-Policy")
 	for _, want := range []string{
 		"default-src 'self'",
+		"script-src 'self'",
 		"frame-ancestors 'none'",
+		"base-uri 'none'",
+		"form-action 'self'",
 		"https://fonts.googleapis.com",
 		"https://fonts.gstatic.com",
 	} {

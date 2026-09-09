@@ -47,37 +47,21 @@ func main() {
 	}
 
 	cmd := strings.ToLower(os.Args[1])
-	if cmd == "init" {
-		if err := initializeNewInstall(); err != nil {
-			log.Fatalf("Error running mesh: %v\n", err)
-		}
-		return
-	}
-
-	if cmd == "join" {
-		if err := runJoin(os.Args[2:]); err != nil {
-			log.Fatalf("Error running mesh: %v\n", err)
-		}
-		return
-	}
-
-	config := core.MustLoadConfig()
-	if config.Debug {
-		log.Default.SetLevel(log.LogAll)
-	} else {
-		log.Default.SetLevel(log.LogNormal)
-	}
 
 	var err error
 	switch cmd {
+	case "join":
+		if err := runJoin(os.Args[2:]); err != nil {
+			log.Fatalf("Error running mesh: %v\n", err)
+		}
+
 	case "proxy":
+		config := core.MustLoadConfig()
 		err = runProxy(config)
 
 	case "admin":
+		config := core.MustLoadConfig()
 		err = runAdminAndRelay(config)
-
-	case "proxy+admin", "standalone", "hybrid":
-		err = runHybrid(config)
 
 	default:
 		fmt.Fprintln(os.Stderr, "usage:", os.Args[0], "init | join <invite-url> | proxy | admin | hybrid(proxy+admin)")

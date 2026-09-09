@@ -2,11 +2,15 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/asynchronomatic/speakeasy/pkg/core"
 )
 
 func TestRedeemInvite(t *testing.T) {
@@ -90,5 +94,50 @@ func TestRedeemInviteHTTPError(t *testing.T) {
 	_, err := RedeemInvite(ts.URL+"/api/v1/redeem/expired", Node{ID: "peer-1"})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "invite expired") {
+		t.Fatalf("error leaked body: %v", err)
+	}
+}
+
+func TestRedeemInviteRejectsMetadata(t *testing.T) {
+	_, err := RedeemInvite("http://169.254.169.254/latest/meta-data", Node{ID: "peer-1"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, core.ErrProviderURLMetadata) {
+		t.Fatalf("err=%v want metadata", err)
+	}
+}
+
+func TestRedeemInviteRejectsUserinfo(t *testing.T) {
+	_, err := RedeemInvite("http://user:pass@example.com/api/v1/redeem/x", Node{ID: "peer-1"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, core.ErrProviderURLUserinfo) {
+		t.Fatalf("err=%v want userinfo", err)
+	}
+}
+
+func TestRedeemInviteDoesNotFollowRedirect(t *testing.T) {
+	hit := false
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(dest.Close)
+
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, dest.URL+"/imds", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(src.Close)
+
+	_, err := RedeemInvite(src.URL+"/api/v1/redeem/x", Node{ID: "peer-1"})
+	if err == nil {
+		t.Fatal("expected redirect error")
+	}
+	if hit {
+		t.Fatal("followed redirect")
 	}
 }

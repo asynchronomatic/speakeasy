@@ -241,7 +241,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
 	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
-	setSecurityHeaders(w)
+	security.SetHeaders(w)
 	p.mux.ServeHTTP(w, r)
 }
 
@@ -340,12 +340,14 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	//-------------------------------------------
 	// Routes serviced by the proxy api locally
 	// OpenAI APIs
+	// Per spec we want to leave these open like ollama
 	p.mux.HandleFunc("GET /v1/models", p.handle(p.openaiListModelsHandler))
 	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
 	p.mux.HandleFunc("/v1/messages", p.localProxyRequest) // anthropic
 
+	// Secure endpoint
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("GET /api/mesh/auth", p.handle(p.authRequiredHandler))
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))

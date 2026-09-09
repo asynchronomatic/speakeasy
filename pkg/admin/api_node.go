@@ -20,6 +20,19 @@ import (
 
 var SessionTokenTTL = 10 * time.Minute
 
+// dummyLoginHash is a real bcrypt hash so unknown-node logins pay the same
+// CompareHashAndPassword cost as a wrong password. The dummy secret is never
+// accepted: login still fails when the node record is missing.
+var dummyLoginHash []byte
+
+func init() {
+	h, err := bcrypt.GenerateFromPassword([]byte("speakeasy-dummy-login-not-a-real-secret"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("admin: dummy login hash: " + err.Error())
+	}
+	dummyLoginHash = h
+}
+
 func (s *Server) apiNodeAuthorize(ctx *jsonrpc.RPC) error {
 	var req api.RegisterNodeRequest
 	if err := ctx.GetObject(&req); err != nil {
@@ -269,13 +282,18 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 	}
 
 	var rec meshNodeRecord
+
 	if err := s.kv.Get(meshNodeKVKey(meshID, req.NodeID), &rec); err != nil {
+		// fake compare in the fail path to not allow attacker to determine miss/hit on nodeID
+		_ = bcrypt.CompareHashAndPassword(dummyLoginHash, []byte(req.MeshSecret))
 		if errors.Is(err, jsonkv.ErrNotFound) {
 			return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 		}
 		return err
 	}
-	if rec.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(req.MeshSecret)) != nil {
+
+	mismatch := bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(req.MeshSecret)) != nil
+	if mismatch {
 		return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 

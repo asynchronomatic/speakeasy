@@ -12,17 +12,18 @@ import (
 )
 
 func runProxy(config *core.Config) error {
+	if config.Proxy.Password == "" {
+		return fmt.Errorf("proxy password is required")
+	}
+
 	service, err := mesh.NewService(&config.Mesh, nil)
 	if err != nil {
 		log.Fatalf("Could not initialize mesh err:%v\n", err)
 	}
 	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers, config.PrivateBackendsAllowed())
+	p.WithAdminToken(config.Proxy.Password)
+
 	attachAdminController(p, config)
-
-	if config.Proxy.Password != "" {
-		p.WithAdminToken(config.Proxy.Password)
-	}
-
 	return core.RunInterruptible(p)
 }
 
