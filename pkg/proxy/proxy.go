@@ -311,6 +311,16 @@ func (p *Proxy) WithAdminToken(token string) {
 	log.WithName("proxy").Warnf("Enabled UI Authentication")
 }
 
+func (p *Proxy) WithInferenceTokens(insecure bool, tokens []core.InferenceToken) {
+	p.inferenceAuth.SetInsecure(insecure)
+	for _, t := range tokens {
+		err := p.inferenceAuth.AddToken(t.Token)
+		if err != nil {
+			log.Warnf("Found invalid inference token: %s", err)
+		}
+	}
+}
+
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
 func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider, allowPrivateBackends bool) (*Proxy, error) {
