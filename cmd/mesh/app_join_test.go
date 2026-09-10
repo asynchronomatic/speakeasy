@@ -301,7 +301,7 @@ func TestAdminControllerAddr(t *testing.T) {
 }
 
 func TestRunJoinRequiresURL(t *testing.T) {
-	if err := runJoin(nil); err == nil {
+	if err := runJoin(""); err == nil {
 		t.Fatal("expected usage error")
 	}
 }

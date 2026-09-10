@@ -367,7 +367,7 @@
         <section id="view-settings" class="view" data-view="settings">
           <div class="page-header">
             <h2>Settings</h2>
-            <p class="muted">Appearance and local model backends on this node</p>
+            <p class="muted">Appearance, inference access, and local model backends on this node</p>
           </div>
           <div class="settings-panels">
             <div class="admin-section">
@@ -394,6 +394,38 @@
                 <span>Debug logging</span>
               </label>
               <p id="debug-error" class="admin-error hidden" hidden></p>
+            </div>
+          </div>
+          <div class="admin-section">
+            <div class="admin-section-header">
+              <h3>Inference Tokens</h3>
+            </div>
+            <div class="inference-tokens-toolbar">
+              <label class="switch settings-inference-insecure">
+                <input type="checkbox" id="inference-insecure" role="switch">
+                <span class="switch-track" aria-hidden="true"></span>
+                <span class="switch-label">Allow inference without a token</span>
+              </label>
+              <button type="button" class="btn btn-primary" id="inference-token-open">New Token</button>
+            </div>
+            <div id="inference-insecure-notice" class="chat-privacy inference-insecure-notice hidden" role="status" hidden>
+              <strong>Inference is public.</strong> Access controls are off — anyone who can reach this proxy can run models without a token.
+            </div>
+            <p id="inference-tokens-error" class="admin-error hidden" hidden></p>
+            <div class="table-wrap">
+              <table class="data-table" id="inference-tokens-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Token</th>
+                    <th>Created</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="inference-tokens-body">
+                  <tr><td colspan="4" class="empty">Loading inference tokens…</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
           <div class="admin-section">
@@ -534,6 +566,122 @@
           <button type="submit" class="btn btn-primary" id="provider-create">Add</button>
         </div>
       </form>
+    </div>
+  </div>
+  <div id="inference-token-modal" class="modal hidden" hidden>
+    <div class="modal-backdrop" data-close-inference-token-modal></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="inference-token-modal-title">
+      <div class="modal-header">
+        <h3 id="inference-token-modal-title">New inference token</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-inference-token-modal aria-label="Close">Close</button>
+      </div>
+      <form id="inference-token-form" class="modal-form">
+        <div class="modal-body">
+          <label class="admin-field">
+            <span>Name</span>
+            <input type="text" id="inference-token-name" placeholder="ci, laptop, open-webui" autocomplete="off" required>
+          </label>
+          <p class="admin-invite-hint muted">The secret is shown once after you create the token. Copy it then; it is not stored in plaintext.</p>
+          <p id="inference-token-modal-error" class="admin-error hidden" hidden></p>
+        </div>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-outline" data-close-inference-token-modal>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="inference-token-create">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="inference-secret-modal" class="modal hidden" hidden>
+    <div class="modal-backdrop" data-close-inference-secret-modal></div>
+    <div class="modal-card modal-card-secret" role="dialog" aria-modal="true" aria-labelledby="inference-secret-modal-title">
+      <div class="modal-header">
+        <h3 id="inference-secret-modal-title">Save this token secret</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-inference-secret-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted">Copy this secret now. It will not be shown again.</p>
+        <label class="admin-field">
+          <span>Name</span>
+          <input type="text" id="inference-secret-name" readonly tabindex="-1">
+        </label>
+        <div class="inference-secret-box">
+          <code id="inference-secret-value"></code>
+          <button type="button" class="btn btn-ghost btn-copy" id="inference-secret-copy" title="Copy secret" aria-label="Copy secret">
+            <svg class="copy-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-primary" data-close-inference-secret-modal id="inference-secret-done">Done</button>
+      </div>
+    </div>
+  </div>
+  <div id="inference-token-delete-modal" class="modal confirm-modal hidden" hidden>
+    <div class="modal-backdrop" data-close-inference-token-delete-modal></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="inference-token-delete-title">
+      <div class="modal-header">
+        <h3 id="inference-token-delete-title">Delete inference token</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-inference-token-delete-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p>Delete inference token <strong id="inference-token-delete-name"></strong>? This cannot be undone.</p>
+        <p id="inference-token-delete-error" class="admin-error hidden" hidden></p>
+      </div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-outline" data-close-inference-token-delete-modal>Cancel</button>
+        <button type="button" class="btn btn-danger" id="inference-token-delete-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+  <div id="provider-delete-modal" class="modal confirm-modal hidden" hidden>
+    <div class="modal-backdrop" data-close-provider-delete-modal></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="provider-delete-title">
+      <div class="modal-header">
+        <h3 id="provider-delete-title">Remove provider</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-provider-delete-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p>Remove provider <strong id="provider-delete-name"></strong>? This cannot be undone.</p>
+        <p id="provider-delete-error" class="admin-error hidden" hidden></p>
+      </div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-outline" data-close-provider-delete-modal>Cancel</button>
+        <button type="button" class="btn btn-danger" id="provider-delete-confirm">Remove</button>
+      </div>
+    </div>
+  </div>
+  <div id="admin-invite-revoke-modal" class="modal confirm-modal hidden" hidden>
+    <div class="modal-backdrop" data-close-admin-invite-revoke-modal></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="admin-invite-revoke-title">
+      <div class="modal-header">
+        <h3 id="admin-invite-revoke-title">Revoke invite</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-admin-invite-revoke-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p>Revoke invite <strong id="admin-invite-revoke-name"></strong>? It will no longer work.</p>
+        <p id="admin-invite-revoke-error" class="admin-error hidden" hidden></p>
+      </div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-outline" data-close-admin-invite-revoke-modal>Cancel</button>
+        <button type="button" class="btn btn-danger" id="admin-invite-revoke-confirm">Revoke</button>
+      </div>
+    </div>
+  </div>
+  <div id="admin-node-kick-modal" class="modal confirm-modal hidden" hidden>
+    <div class="modal-backdrop" data-close-admin-node-kick-modal></div>
+    <div class="modal-card modal-card-invite" role="dialog" aria-modal="true" aria-labelledby="admin-node-kick-title">
+      <div class="modal-header">
+        <h3 id="admin-node-kick-title">Kick node</h3>
+        <button type="button" class="btn btn-ghost btn-sm" data-close-admin-node-kick-modal aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <p>Kick <strong id="admin-node-kick-name"></strong> from the mesh? It will need a new invite to rejoin.</p>
+        <p id="admin-node-kick-error" class="admin-error hidden" hidden></p>
+      </div>
+      <div class="modal-footer-actions">
+        <button type="button" class="btn btn-outline" data-close-admin-node-kick-modal>Cancel</button>
+        <button type="button" class="btn btn-danger" id="admin-node-kick-confirm">Kick</button>
+      </div>
     </div>
   </div>
   <script src="/ui/js/app.js"></script>

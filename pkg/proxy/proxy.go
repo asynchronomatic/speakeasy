@@ -61,6 +61,8 @@ type Proxy struct {
 	auth  *auth.UserAuth
 	lock  sync.RWMutex
 
+	inferenceAuth *auth.InferenceAuth
+
 	notifier    *socket.Notifier
 	modelRouter *modeldex.ModelRouter
 
@@ -317,15 +319,16 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	modelRouter.Refresh()
 
 	p := &Proxy{
-		listen:       listen,
-		mux:          http.NewServeMux(),
-		meshMux:      http.NewServeMux(),
-		mesh:         meshService,
-		modelRouter:  modelRouter,
-		notifier:     socket.NewNotifier(),
-		allowPrivate: allowPrivateBackends,
-		providerRT:   providerRT,
-		wsTickets:    make(map[string]time.Time),
+		listen:        listen,
+		mux:           http.NewServeMux(),
+		meshMux:       http.NewServeMux(),
+		mesh:          meshService,
+		modelRouter:   modelRouter,
+		notifier:      socket.NewNotifier(),
+		allowPrivate:  allowPrivateBackends,
+		providerRT:    providerRT,
+		inferenceAuth: auth.NewInferenceAuth(),
+		wsTickets:     make(map[string]time.Time),
 	}
 
 	//-------------------------------------------
@@ -364,6 +367,10 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("POST /api/mesh/providers", p.authenticated(jsonrpc.AsAdmin(p.providerAddHandler)))
 	p.mux.HandleFunc("POST /api/mesh/providers/{id}", p.authenticated(jsonrpc.AsAdmin(p.providerUpdateHandler)))
 	p.mux.HandleFunc("DELETE /api/mesh/providers/{id}", p.authenticated(jsonrpc.AsAdmin(p.providerDeleteHandler)))
+
+	p.mux.HandleFunc("GET /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokensList)))
+	p.mux.HandleFunc("POST /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenCreate)))
+	p.mux.HandleFunc("DELETE /api/proxy/inference/tokens/{id}", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenDelete)))
 
 	p.mux.HandleFunc("GET /api/admin/enabled", p.authenticated(jsonrpc.AsAdmin(p.adminEnabledHandler)))
 	p.mux.HandleFunc("POST /api/admin/enabled", p.authenticated(jsonrpc.AsAdmin(p.adminEnableHandler)))

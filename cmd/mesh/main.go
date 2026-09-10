@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/urfave/cli/v3"
 
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
@@ -41,34 +44,79 @@ func discoverPublicAddress(config *core.Config) string {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage:", os.Args[0], "join <invite-url> | proxy | admin ")
-		os.Exit(1)
-	}
-
-	cmd := strings.ToLower(os.Args[1])
-
-	var err error
-	switch cmd {
-	case "join":
-		if err := runJoin(os.Args[2:]); err != nil {
-			log.Fatalf("Error running mesh: %v\n", err)
-		}
-
-	case "proxy":
-		config := core.MustLoadConfig()
-		err = runProxy(config)
-
-	case "admin":
-		config := core.MustLoadConfig()
-		err = runAdminAndRelay(config)
-
-	default:
-		fmt.Fprintln(os.Stderr, "usage:", os.Args[0], "init | join <invite-url> | proxy | admin | hybrid(proxy+admin)")
-		os.Exit(1)
-	}
-
-	if err != nil {
+	if err := newCommand().Run(context.Background(), os.Args); err != nil {
 		log.Fatalf("Error running mesh: %v\n", err)
 	}
+}
+
+func newCommand() *cli.Command {
+	return &cli.Command{
+		Name:                  "mesh",
+		Usage:                 "Speakeasy mesh node: init, join, proxy, and admin",
+		EnableShellCompletion: true,
+		Commands: []*cli.Command{
+			{
+				Name:  "init",
+				Usage: "Interactive setup: write config.yaml, node.key, and relay.key",
+				Action: func(context.Context, *cli.Command) error {
+					return initializeNewInstall()
+				},
+			},
+			{
+				Name:      "join",
+				Usage:     "Join a mesh from an invite URL, then start the proxy",
+				ArgsUsage: "INVITE_URL",
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					url, err := requireArg(cmd, "invite URL")
+					if err != nil {
+						return err
+					}
+					return runJoin(url)
+				},
+			},
+			{
+				Name:  "proxy",
+				Usage: "Start the local OpenAI/Ollama proxy on this mesh",
+				Action: func(context.Context, *cli.Command) error {
+					return runProxy(core.MustLoadConfig())
+				},
+			},
+			{
+				Name:  "admin",
+				Usage: "Run the admin HTTP API and libp2p relay",
+				Action: func(context.Context, *cli.Command) error {
+					return runAdminAndRelay(core.MustLoadConfig())
+				},
+			},
+			{
+				Name:    "hybrid",
+				Aliases: []string{"standalone", "proxy+admin"},
+				Usage:   "Run admin, relay, and proxy on one machine",
+				Action: func(context.Context, *cli.Command) error {
+					return runHybrid(core.MustLoadConfig())
+				},
+			},
+			{
+				Name:  "reset",
+				Usage: "Detach this node from its mesh (clear membership and delete node.key)",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "all",
+						Usage: "Delete config.yaml and node.key entirely",
+					},
+				},
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					return runReset(cmd.Bool("all"))
+				},
+			},
+		},
+	}
+}
+
+func requireArg(cmd *cli.Command, name string) (string, error) {
+	v := strings.TrimSpace(cmd.Args().First())
+	if v == "" {
+		return "", fmt.Errorf("%s is required", name)
+	}
+	return v, nil
 }

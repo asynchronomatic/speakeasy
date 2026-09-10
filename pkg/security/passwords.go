@@ -1,6 +1,7 @@
 package security
 
 import (
+	"crypto/rand"
 	"net/http"
 	"strings"
 
@@ -21,8 +22,16 @@ func DummySecretMatch(secret string) {
 	_ = bcrypt.CompareHashAndPassword(DummyHash, []byte(secret))
 }
 
-func HashPassword(password string) ([]byte, error) {
+func PasswordHash(password string) ([]byte, error) {
 	return bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+}
+
+func PasswordCompare(stored, received []byte) error {
+	return bcrypt.CompareHashAndPassword(stored, received)
+}
+
+func DummySecretMatchEx(secret []byte) {
+	_ = bcrypt.CompareHashAndPassword(DummyHash, secret)
 }
 
 func GetToken(r *http.Request) string {
@@ -33,4 +42,16 @@ func GetToken(r *http.Request) string {
 		return token
 	}
 	return ""
+}
+
+func HashSecret(secret []byte) ([]byte, error) {
+	return bcrypt.GenerateFromPassword(secret, bcrypt.DefaultCost)
+}
+
+func RandomSecret(byteCount int) ([]byte, error) {
+	b := make([]byte, byteCount)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	return b, nil
 }
