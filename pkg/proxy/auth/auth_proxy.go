@@ -109,7 +109,7 @@ func (a *UserAuth) LoginApi(userid, password string) (string, int) {
 
 // WithUser adds a new user to the static authenticator
 func (a *UserAuth) WithUser(user, group, password string) *UserAuth {
-	hashed, err := security.HashPassword(password)
+	hashed, err := security.PasswordHash(password)
 	if err != nil {
 		return nil
 	}

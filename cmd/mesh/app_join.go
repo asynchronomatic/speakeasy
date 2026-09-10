@@ -16,9 +16,10 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
-func runJoin(args []string) error {
-	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
-		return fmt.Errorf("usage: %s join <invite-url>", os.Args[0])
+func runJoin(inviteURL string) error {
+	inviteURL = strings.TrimSpace(inviteURL)
+	if inviteURL == "" {
+		return fmt.Errorf("invite URL is required")
 	}
 	existing, cont, err := existingJoinConfig()
 	if err != nil {
@@ -27,7 +28,7 @@ func runJoin(args []string) error {
 	if !cont {
 		return nil
 	}
-	if err := joinWithInvite(strings.TrimSpace(args[0]), existing); err != nil {
+	if err := joinWithInvite(inviteURL, existing); err != nil {
 		return err
 	}
 	config := core.MustLoadConfig()

@@ -16,8 +16,14 @@
     invites: [],
     adminNodes: [],
     createdInvite: null,
+    pendingRevokeInvite: "",
+    pendingKickNode: "",
     providers: [],
     editingProvider: null,
+    pendingDeleteProvider: "",
+    inferenceTokens: [],
+    inferenceInsecure: false,
+    pendingDeleteInferenceToken: "",
     meshSize: { w: 0, h: 0 },
     selectedPeer: null,
     expandedPeer: null,
@@ -65,6 +71,27 @@
     providerModelsBody: document.getElementById("provider-models-body"),
     providerModelAdd: document.getElementById("provider-model-add"),
     providerModalError: document.getElementById("provider-modal-error"),
+    providerDeleteModal: document.getElementById("provider-delete-modal"),
+    providerDeleteName: document.getElementById("provider-delete-name"),
+    providerDeleteError: document.getElementById("provider-delete-error"),
+    providerDeleteConfirm: document.getElementById("provider-delete-confirm"),
+    inferenceTokensBody: document.getElementById("inference-tokens-body"),
+    inferenceTokensError: document.getElementById("inference-tokens-error"),
+    inferenceInsecure: document.getElementById("inference-insecure"),
+    inferenceInsecureNotice: document.getElementById("inference-insecure-notice"),
+    inferenceTokenOpen: document.getElementById("inference-token-open"),
+    inferenceTokenModal: document.getElementById("inference-token-modal"),
+    inferenceTokenForm: document.getElementById("inference-token-form"),
+    inferenceTokenName: document.getElementById("inference-token-name"),
+    inferenceTokenModalError: document.getElementById("inference-token-modal-error"),
+    inferenceSecretModal: document.getElementById("inference-secret-modal"),
+    inferenceSecretName: document.getElementById("inference-secret-name"),
+    inferenceSecretValue: document.getElementById("inference-secret-value"),
+    inferenceSecretCopy: document.getElementById("inference-secret-copy"),
+    inferenceTokenDeleteModal: document.getElementById("inference-token-delete-modal"),
+    inferenceTokenDeleteName: document.getElementById("inference-token-delete-name"),
+    inferenceTokenDeleteError: document.getElementById("inference-token-delete-error"),
+    inferenceTokenDeleteConfirm: document.getElementById("inference-token-delete-confirm"),
     welcomeOpenai: document.getElementById("welcome-openai-url"),
     welcomeModels: document.getElementById("welcome-models-url"),
     welcomeChat: document.getElementById("welcome-chat-url"),
@@ -96,6 +123,14 @@
     adminCopy: document.getElementById("admin-invite-copy"),
     adminInvitesBody: document.getElementById("admin-invites-body"),
     adminNodesBody: document.getElementById("admin-nodes-body"),
+    adminInviteRevokeModal: document.getElementById("admin-invite-revoke-modal"),
+    adminInviteRevokeName: document.getElementById("admin-invite-revoke-name"),
+    adminInviteRevokeError: document.getElementById("admin-invite-revoke-error"),
+    adminInviteRevokeConfirm: document.getElementById("admin-invite-revoke-confirm"),
+    adminNodeKickModal: document.getElementById("admin-node-kick-modal"),
+    adminNodeKickName: document.getElementById("admin-node-kick-name"),
+    adminNodeKickError: document.getElementById("admin-node-kick-error"),
+    adminNodeKickConfirm: document.getElementById("admin-node-kick-confirm"),
     app: document.getElementById("app"),
     loginOverlay: document.getElementById("login-overlay"),
     loginForm: document.getElementById("login-form"),
@@ -1257,10 +1292,18 @@
   async function renderSettings() {
     setErrorEl(el.providersError, "");
     setErrorEl(el.debugError, "");
+    setErrorEl(el.inferenceTokensError, "");
     try {
       await loadDebug();
     } catch (err) {
       setErrorEl(el.debugError, err.message || String(err));
+    }
+    try {
+      await loadInferenceTokens();
+    } catch (err) {
+      state.inferenceTokens = [];
+      setErrorEl(el.inferenceTokensError, err.message || String(err));
+      renderInferenceTokens();
     }
     try {
       await loadProviders();
@@ -1269,6 +1312,195 @@
       state.providers = [];
       setErrorEl(el.providersError, err.message || String(err));
       renderProviders();
+    }
+  }
+
+  function inferenceTokenName(t) {
+    return (t && (t.name || t.Name)) || "";
+  }
+
+  function inferenceTokenValue(t) {
+    return (t && (t.token || t.Token)) || "";
+  }
+
+  function formatInferenceCreated(t) {
+    const raw = (t && (t.created_at || t.CreatedAt || t.created || t.Created)) || "";
+    if (!raw) return "—";
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime()) || d.getTime() === 0) return "—";
+    return d.toLocaleString();
+  }
+
+  function applyInferenceTokens(data) {
+    state.inferenceInsecure = !!(data && (data.insecure || data.Insecure));
+    state.inferenceTokens = (data && (data.tokens || data.Tokens)) || [];
+    if (el.inferenceInsecure) el.inferenceInsecure.checked = state.inferenceInsecure;
+    updateInferenceInsecureNotice();
+    if (state.view === "settings") renderInferenceTokens();
+  }
+
+  function updateInferenceInsecureNotice() {
+    const box = el.inferenceInsecureNotice;
+    if (!box) return;
+    const on = state.inferenceInsecure;
+    box.hidden = !on;
+    box.classList.toggle("hidden", !on);
+  }
+
+  function renderInferenceTokens() {
+    if (!el.inferenceTokensBody) return;
+    if (el.inferenceInsecure) el.inferenceInsecure.checked = state.inferenceInsecure;
+    updateInferenceInsecureNotice();
+    if (!state.inferenceTokens.length) {
+      el.inferenceTokensBody.innerHTML = `<tr><td colspan="4" class="empty">No inference tokens. Create one to require a bearer token on inference endpoints.</td></tr>`;
+      return;
+    }
+    el.inferenceTokensBody.innerHTML = state.inferenceTokens.map((t) => {
+      const name = inferenceTokenName(t);
+      const token = inferenceTokenValue(t);
+      return `<tr>
+        <td>${escapeHTML(name || "—")}</td>
+        <td class="mono inference-token-cell">${escapeHTML(token || "—")}</td>
+        <td>${escapeHTML(formatInferenceCreated(t))}</td>
+        <td>
+          <button type="button" class="btn btn-danger btn-sm" data-remove-inference-token="${escapeHTML(token)}">Delete</button>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function loadInferenceTokens() {
+    const data = await getJSON("/api/proxy/inference/tokens");
+    applyInferenceTokens(data);
+  }
+
+  async function saveInferenceInsecure() {
+    if (!el.inferenceInsecure) return;
+    const on = !!el.inferenceInsecure.checked;
+    setErrorEl(el.inferenceTokensError, "");
+    try {
+      const data = await sendJSON("/api/proxy/inference/tokens", "POST", { insecure: on });
+      applyInferenceTokens(data);
+    } catch (err) {
+      el.inferenceInsecure.checked = !on;
+      setErrorEl(el.inferenceTokensError, err.message || String(err));
+    }
+  }
+
+  function inferenceTokenModalOpen() {
+    return el.inferenceTokenModal && !el.inferenceTokenModal.hidden && !el.inferenceTokenModal.classList.contains("hidden");
+  }
+
+  function inferenceSecretModalOpen() {
+    return el.inferenceSecretModal && !el.inferenceSecretModal.hidden && !el.inferenceSecretModal.classList.contains("hidden");
+  }
+
+  function inferenceTokenDeleteModalOpen() {
+    return el.inferenceTokenDeleteModal && !el.inferenceTokenDeleteModal.hidden && !el.inferenceTokenDeleteModal.classList.contains("hidden");
+  }
+
+  function openInferenceTokenModal() {
+    if (el.inferenceTokenForm) el.inferenceTokenForm.reset();
+    setErrorEl(el.inferenceTokenModalError, "");
+    if (el.inferenceTokenModal) {
+      el.inferenceTokenModal.hidden = false;
+      el.inferenceTokenModal.classList.remove("hidden");
+    }
+    if (el.inferenceTokenName) el.inferenceTokenName.focus();
+  }
+
+  function closeInferenceTokenModal() {
+    if (el.inferenceTokenModal) {
+      el.inferenceTokenModal.hidden = true;
+      el.inferenceTokenModal.classList.add("hidden");
+    }
+    setErrorEl(el.inferenceTokenModalError, "");
+  }
+
+  function openInferenceSecretModal(token) {
+    const name = inferenceTokenName(token);
+    const secret = (token && (token.secret || token.Secret)) || "";
+    if (el.inferenceSecretName) el.inferenceSecretName.value = name;
+    if (el.inferenceSecretValue) el.inferenceSecretValue.textContent = secret;
+    if (el.inferenceSecretCopy) el.inferenceSecretCopy.setAttribute("data-copy-secret", secret);
+    if (el.inferenceSecretModal) {
+      el.inferenceSecretModal.hidden = false;
+      el.inferenceSecretModal.classList.remove("hidden");
+    }
+  }
+
+  function closeInferenceSecretModal() {
+    if (el.inferenceSecretModal) {
+      el.inferenceSecretModal.hidden = true;
+      el.inferenceSecretModal.classList.add("hidden");
+    }
+    if (el.inferenceSecretValue) el.inferenceSecretValue.textContent = "";
+    if (el.inferenceSecretCopy) el.inferenceSecretCopy.removeAttribute("data-copy-secret");
+    if (el.inferenceSecretName) el.inferenceSecretName.value = "";
+  }
+
+  async function createInferenceToken(e) {
+    e.preventDefault();
+    setErrorEl(el.inferenceTokenModalError, "");
+    const name = (el.inferenceTokenName && el.inferenceTokenName.value.trim()) || "";
+    const submit = document.getElementById("inference-token-create");
+    if (submit) submit.disabled = true;
+    try {
+      const created = await sendJSON("/api/proxy/inference/tokens", "POST", { token: { name } });
+      closeInferenceTokenModal();
+      await loadInferenceTokens();
+      openInferenceSecretModal(created);
+    } catch (err) {
+      setErrorEl(el.inferenceTokenModalError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  }
+
+  function openInferenceTokenDeleteModal(name) {
+    if (!name) return;
+    state.pendingDeleteInferenceToken = name;
+    if (el.inferenceTokenDeleteName) el.inferenceTokenDeleteName.textContent = name;
+    setErrorEl(el.inferenceTokenDeleteError, "");
+    if (el.inferenceTokenDeleteModal) {
+      el.inferenceTokenDeleteModal.hidden = false;
+      el.inferenceTokenDeleteModal.classList.remove("hidden");
+    }
+    if (el.inferenceTokenDeleteConfirm) el.inferenceTokenDeleteConfirm.focus();
+  }
+
+  function closeInferenceTokenDeleteModal() {
+    state.pendingDeleteInferenceToken = "";
+    if (el.inferenceTokenDeleteModal) {
+      el.inferenceTokenDeleteModal.hidden = true;
+      el.inferenceTokenDeleteModal.classList.add("hidden");
+    }
+    if (el.inferenceTokenDeleteName) el.inferenceTokenDeleteName.textContent = "";
+    setErrorEl(el.inferenceTokenDeleteError, "");
+  }
+
+  function removeInferenceToken(name) {
+    openInferenceTokenDeleteModal(name);
+  }
+
+  async function confirmInferenceTokenDelete() {
+    const name = state.pendingDeleteInferenceToken;
+    if (!name) {
+      closeInferenceTokenDeleteModal();
+      return;
+    }
+    setErrorEl(el.inferenceTokenDeleteError, "");
+    setErrorEl(el.inferenceTokensError, "");
+    const submit = el.inferenceTokenDeleteConfirm;
+    if (submit) submit.disabled = true;
+    try {
+      await sendJSON("/api/proxy/inference/tokens/" + encodeURIComponent(name), "DELETE");
+      closeInferenceTokenDeleteModal();
+      await loadInferenceTokens();
+    } catch (err) {
+      setErrorEl(el.inferenceTokenDeleteError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
     }
   }
 
@@ -1454,15 +1686,54 @@
     }
   }
 
-  async function removeProvider(id) {
+  function providerDeleteModalOpen() {
+    return el.providerDeleteModal && !el.providerDeleteModal.hidden && !el.providerDeleteModal.classList.contains("hidden");
+  }
+
+  function openProviderDeleteModal(id) {
     if (!id) return;
-    if (!window.confirm("Remove provider “" + id + "” from config.yaml?")) return;
+    state.pendingDeleteProvider = id;
+    if (el.providerDeleteName) el.providerDeleteName.textContent = id;
+    setErrorEl(el.providerDeleteError, "");
+    if (el.providerDeleteModal) {
+      el.providerDeleteModal.hidden = false;
+      el.providerDeleteModal.classList.remove("hidden");
+    }
+    if (el.providerDeleteConfirm) el.providerDeleteConfirm.focus();
+  }
+
+  function closeProviderDeleteModal() {
+    state.pendingDeleteProvider = "";
+    if (el.providerDeleteModal) {
+      el.providerDeleteModal.hidden = true;
+      el.providerDeleteModal.classList.add("hidden");
+    }
+    if (el.providerDeleteName) el.providerDeleteName.textContent = "";
+    setErrorEl(el.providerDeleteError, "");
+  }
+
+  function removeProvider(id) {
+    openProviderDeleteModal(id);
+  }
+
+  async function confirmProviderDelete() {
+    const id = state.pendingDeleteProvider;
+    if (!id) {
+      closeProviderDeleteModal();
+      return;
+    }
+    setErrorEl(el.providerDeleteError, "");
     setErrorEl(el.providersError, "");
+    const submit = el.providerDeleteConfirm;
+    if (submit) submit.disabled = true;
     try {
       await sendJSON("/api/mesh/providers/" + encodeURIComponent(id), "DELETE");
+      closeProviderDeleteModal();
       await loadProviders();
     } catch (err) {
-      setErrorEl(el.providersError, err.message || String(err));
+      setErrorEl(el.providerDeleteError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
     }
   }
 
@@ -1802,31 +2073,122 @@
     }
   }
 
-  async function revokeInvite(id) {
+  function revokeInviteLabel(id) {
+    const inv = state.invites.find((i) => (i.InviteId || i.inviteId) === id);
+    const name = inv && (inv.Name || inv.name);
+    return name || id;
+  }
+
+  function kickNodeLabel(id) {
+    const n = state.adminNodes.find((node) => nodeID(node) === id);
+    const name = n ? nodeName(n) : "";
+    if (name && name !== "—") return name;
+    return id;
+  }
+
+  function adminInviteRevokeModalOpen() {
+    return el.adminInviteRevokeModal && !el.adminInviteRevokeModal.hidden && !el.adminInviteRevokeModal.classList.contains("hidden");
+  }
+
+  function adminNodeKickModalOpen() {
+    return el.adminNodeKickModal && !el.adminNodeKickModal.hidden && !el.adminNodeKickModal.classList.contains("hidden");
+  }
+
+  function openRevokeInviteModal(id) {
     if (!id || !state.adminEnabled) return;
-    if (!window.confirm("Revoke this invite? It will no longer work.")) return;
+    state.pendingRevokeInvite = id;
+    if (el.adminInviteRevokeName) el.adminInviteRevokeName.textContent = revokeInviteLabel(id);
+    setErrorEl(el.adminInviteRevokeError, "");
+    if (el.adminInviteRevokeModal) {
+      el.adminInviteRevokeModal.hidden = false;
+      el.adminInviteRevokeModal.classList.remove("hidden");
+    }
+    if (el.adminInviteRevokeConfirm) el.adminInviteRevokeConfirm.focus();
+  }
+
+  function closeRevokeInviteModal() {
+    state.pendingRevokeInvite = "";
+    if (el.adminInviteRevokeModal) {
+      el.adminInviteRevokeModal.hidden = true;
+      el.adminInviteRevokeModal.classList.add("hidden");
+    }
+    if (el.adminInviteRevokeName) el.adminInviteRevokeName.textContent = "";
+    setErrorEl(el.adminInviteRevokeError, "");
+  }
+
+  function openKickNodeModal(id) {
+    if (!id || !state.adminEnabled) return;
+    state.pendingKickNode = id;
+    if (el.adminNodeKickName) el.adminNodeKickName.textContent = kickNodeLabel(id);
+    setErrorEl(el.adminNodeKickError, "");
+    if (el.adminNodeKickModal) {
+      el.adminNodeKickModal.hidden = false;
+      el.adminNodeKickModal.classList.remove("hidden");
+    }
+    if (el.adminNodeKickConfirm) el.adminNodeKickConfirm.focus();
+  }
+
+  function closeKickNodeModal() {
+    state.pendingKickNode = "";
+    if (el.adminNodeKickModal) {
+      el.adminNodeKickModal.hidden = true;
+      el.adminNodeKickModal.classList.add("hidden");
+    }
+    if (el.adminNodeKickName) el.adminNodeKickName.textContent = "";
+    setErrorEl(el.adminNodeKickError, "");
+  }
+
+  function revokeInvite(id) {
+    openRevokeInviteModal(id);
+  }
+
+  function kickNode(id) {
+    openKickNodeModal(id);
+  }
+
+  async function confirmRevokeInvite() {
+    const id = state.pendingRevokeInvite;
+    if (!id) {
+      closeRevokeInviteModal();
+      return;
+    }
+    setErrorEl(el.adminInviteRevokeError, "");
     setAdminError("");
+    const submit = el.adminInviteRevokeConfirm;
+    if (submit) submit.disabled = true;
     try {
       await sendJSON("/api/admin/invite/" + encodeURIComponent(id), "DELETE");
       if (state.createdInvite && (state.createdInvite.InviteId === id || state.createdInvite.inviteId === id)) {
         state.createdInvite = null;
         showCreatedInvite("");
       }
+      closeRevokeInviteModal();
       await loadInvites();
     } catch (err) {
-      setAdminError(err.message || String(err));
+      setErrorEl(el.adminInviteRevokeError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
     }
   }
 
-  async function kickNode(id) {
-    if (!id || !state.adminEnabled) return;
-    if (!window.confirm("Kick this node from the mesh? It will need a new invite to rejoin.")) return;
+  async function confirmKickNode() {
+    const id = state.pendingKickNode;
+    if (!id) {
+      closeKickNodeModal();
+      return;
+    }
+    setErrorEl(el.adminNodeKickError, "");
     setErrorEl(el.adminNodesError, "");
+    const submit = el.adminNodeKickConfirm;
+    if (submit) submit.disabled = true;
     try {
       await sendJSON("/api/admin/node/" + encodeURIComponent(id), "DELETE");
+      closeKickNodeModal();
       await loadAdminNodes();
     } catch (err) {
-      setErrorEl(el.adminNodesError, err.message || String(err));
+      setErrorEl(el.adminNodeKickError, err.message || String(err));
+    } finally {
+      if (submit) submit.disabled = false;
     }
   }
 
@@ -1953,6 +2315,9 @@
   if (el.debugToggle) {
     el.debugToggle.addEventListener("change", () => saveDebug());
   }
+  if (el.inferenceInsecure) {
+    el.inferenceInsecure.addEventListener("change", () => saveInferenceInsecure());
+  }
   applyTheme(currentTheme());
   if (el.loginForm) {
     el.loginForm.addEventListener("submit", submitLogin);
@@ -1987,7 +2352,13 @@
   }
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (inviteModalOpen()) closeInviteModal();
+    if (inferenceTokenDeleteModalOpen()) closeInferenceTokenDeleteModal();
+    else if (providerDeleteModalOpen()) closeProviderDeleteModal();
+    else if (adminInviteRevokeModalOpen()) closeRevokeInviteModal();
+    else if (adminNodeKickModalOpen()) closeKickNodeModal();
+    else if (inferenceSecretModalOpen()) closeInferenceSecretModal();
+    else if (inferenceTokenModalOpen()) closeInferenceTokenModal();
+    else if (inviteModalOpen()) closeInviteModal();
     else if (providerModalOpen()) closeProviderModal();
   });
   if (el.providerOpen) {
@@ -2028,6 +2399,50 @@
       removeProvider(btn.getAttribute("data-remove-provider"));
     });
   }
+  if (el.providerDeleteModal) {
+    el.providerDeleteModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-provider-delete-modal]")) closeProviderDeleteModal();
+    });
+  }
+  if (el.providerDeleteConfirm) {
+    el.providerDeleteConfirm.addEventListener("click", () => confirmProviderDelete());
+  }
+  if (el.inferenceTokenOpen) {
+    el.inferenceTokenOpen.addEventListener("click", () => openInferenceTokenModal());
+  }
+  if (el.inferenceTokenForm) {
+    el.inferenceTokenForm.addEventListener("submit", createInferenceToken);
+  }
+  if (el.inferenceTokenModal) {
+    el.inferenceTokenModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-inference-token-modal]")) closeInferenceTokenModal();
+    });
+  }
+  if (el.inferenceSecretModal) {
+    el.inferenceSecretModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-inference-secret-modal]")) closeInferenceSecretModal();
+    });
+  }
+  if (el.inferenceSecretCopy) {
+    el.inferenceSecretCopy.addEventListener("click", () => {
+      copyToClipboard(el.inferenceSecretCopy.getAttribute("data-copy-secret"), el.inferenceSecretCopy);
+    });
+  }
+  if (el.inferenceTokensBody) {
+    el.inferenceTokensBody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-inference-token]");
+      if (!btn) return;
+      removeInferenceToken(btn.getAttribute("data-remove-inference-token"));
+    });
+  }
+  if (el.inferenceTokenDeleteModal) {
+    el.inferenceTokenDeleteModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-inference-token-delete-modal]")) closeInferenceTokenDeleteModal();
+    });
+  }
+  if (el.inferenceTokenDeleteConfirm) {
+    el.inferenceTokenDeleteConfirm.addEventListener("click", () => confirmInferenceTokenDelete());
+  }
   if (el.adminCopy) {
     el.adminCopy.addEventListener("click", () => {
       copyToClipboard(el.adminCopy.getAttribute("data-copy-link"), el.adminCopy);
@@ -2045,6 +2460,14 @@
       revokeInvite(btn.getAttribute("data-revoke-invite"));
     });
   }
+  if (el.adminInviteRevokeModal) {
+    el.adminInviteRevokeModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-admin-invite-revoke-modal]")) closeRevokeInviteModal();
+    });
+  }
+  if (el.adminInviteRevokeConfirm) {
+    el.adminInviteRevokeConfirm.addEventListener("click", () => confirmRevokeInvite());
+  }
   if (el.adminNodesBody) {
     el.adminNodesBody.addEventListener("click", (e) => {
       const copyBtn = e.target.closest("[data-copy-link]");
@@ -2056,6 +2479,14 @@
       if (!btn) return;
       kickNode(btn.getAttribute("data-kick-node"));
     });
+  }
+  if (el.adminNodeKickModal) {
+    el.adminNodeKickModal.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-admin-node-kick-modal]")) closeKickNodeModal();
+    });
+  }
+  if (el.adminNodeKickConfirm) {
+    el.adminNodeKickConfirm.addEventListener("click", () => confirmKickNode());
   }
   el.search.addEventListener("input", () => {
     state.filter = el.search.value;

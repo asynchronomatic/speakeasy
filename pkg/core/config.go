@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 
@@ -74,12 +75,22 @@ type MeshConfig struct {
 	MDNSEnabled   bool   `yaml:"mdns_enabled"`
 }
 
+type InferenceToken struct {
+	Name    string    `yaml:"name"`    // friendly name for the token
+	Token   string    `yaml:"token"`   // bcrypt hash of the secret
+	Created time.Time `yaml:"created"`
+}
+
 type Config struct {
 	Proxy struct {
 		Listen               string `yaml:"listen"`
 		Theme                string `yaml:"theme,omitempty"`
 		Password             string `yaml:"password"`
 		AllowPrivateBackends bool   `yaml:"allow_private_backends"`
+		InferenceTokens      struct {
+			Insecure bool             `yaml:"insecure"` // allows insecure inference to the proxy
+			Tokens   []InferenceToken `yaml:"tokens"`
+		} `yaml:"inference_tokens"`
 	} `yaml:"proxy"`
 	Admin     AdminConfig `yaml:"admin"`
 	Mesh      MeshConfig  `yaml:"mesh"`

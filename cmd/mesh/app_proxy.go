@@ -22,6 +22,7 @@ func runProxy(config *core.Config) error {
 	}
 	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers, config.PrivateBackendsAllowed())
 	p.WithAdminToken(config.Proxy.Password)
+	p.WithInferenceTokens(config.Proxy.InferenceTokens.Insecure, config.Proxy.InferenceTokens.Tokens)
 
 	attachAdminController(p, config)
 	return core.RunInterruptible(p)
