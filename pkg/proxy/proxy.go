@@ -17,11 +17,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/negrel/assert"
 	"github.com/sethvargo/go-retry"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
@@ -60,6 +60,8 @@ type Proxy struct {
 	admin *api.AdminClient
 	auth  *auth.UserAuth
 	lock  sync.RWMutex
+
+	cm config.ManagerProvider
 
 	inferenceAuth *auth.InferenceAuth
 
@@ -112,7 +114,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	if local != nil {
 		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model)
 
-		u, err := core.ParseProviderURL(local.BaseURL, p.allowPrivate)
+		u, err := config.ParseProviderURL(local.BaseURL, p.allowPrivate)
 		if err != nil {
 			log.WithName("proxy").Errorf("provider url not allowed: %v", err)
 			http.Error(w, "provider url not allowed", http.StatusBadGateway)
@@ -170,7 +172,7 @@ func rejectProviderRedirect(resp *http.Response) error {
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-		return core.ErrProviderRedirect
+		return config.ErrProviderRedirect
 	}
 	return nil
 }
@@ -262,7 +264,21 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) Serve(ctx context.Context) error {
-	err := p.mesh.Connect()
+	err := p.cm.ReadConfig(func(config *config.Config) error {
+		p.inferenceAuth.SetInsecure(config.Proxy.InferenceTokens.Insecure)
+		for _, t := range config.Proxy.InferenceTokens.Tokens {
+			err := p.inferenceAuth.AddToken(t.Token)
+			if err != nil {
+				log.Warnf("Found invalid inference token: %s", err)
+			}
+		}
+		return nil
+	})
+	//if err != nil {
+	//	return err
+	//}
+
+	err = p.mesh.Connect()
 	if err != nil {
 		return err
 	}
@@ -304,6 +320,7 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 	p.admin = admin
 }
 
+/*
 func (p *Proxy) WithAdminToken(token string) {
 	assert.NotNil(token)
 	p.auth = auth.NewUserAuth()
@@ -311,7 +328,7 @@ func (p *Proxy) WithAdminToken(token string) {
 	log.WithName("proxy").Warnf("Enabled UI Authentication")
 }
 
-func (p *Proxy) WithInferenceTokens(insecure bool, tokens []core.InferenceToken) {
+func (p *Proxy) WithInferenceTokens(insecure bool, tokens []config.InferenceToken) {
 	p.inferenceAuth.SetInsecure(insecure)
 	for _, t := range tokens {
 		err := p.inferenceAuth.AddToken(t.Token)
@@ -319,13 +336,41 @@ func (p *Proxy) WithInferenceTokens(insecure bool, tokens []core.InferenceToken)
 			log.Warnf("Found invalid inference token: %s", err)
 		}
 	}
-}
+}*/
 
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
-func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider, allowPrivateBackends bool) (*Proxy, error) {
-	providerRT := core.NewProviderTransport(allowPrivateBackends)
-	modelRouter := modeldex.NewModelDiscovery(meshService.Node(), providers, core.NewProviderHTTPClientTransport(providerRT))
+func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (*Proxy, error) {
+	var allowPrivateBackends = false
+	var listen = ":4080"
+	var modelRouter *modeldex.ModelRouter
+	var providerRT *http.Transport
+	var inferenceAuth = auth.NewInferenceAuth()
+	var proxyAuth = auth.NewUserAuth()
+
+	err := cm.ReadConfig(func(cfg *config.Config) error {
+		allowPrivateBackends = cfg.PrivateBackendsAllowed()
+		listen = cfg.Proxy.Listen
+		providerRT = config.NewProviderTransport(allowPrivateBackends)
+		modelRouter = modeldex.NewModelDiscovery(meshService.Node(), cfg.Providers, config.NewProviderHTTPClientTransport(providerRT))
+
+		inferenceAuth.SetInsecure(cfg.Proxy.InferenceTokens.Insecure)
+		for _, t := range cfg.Proxy.InferenceTokens.Tokens {
+			err := inferenceAuth.AddToken(t.Token)
+			if err != nil {
+				log.Warnf("Found invalid inference token: %s", err)
+			}
+		}
+
+		proxyAuth = auth.NewUserAuth()
+		proxyAuth.WithUser(jsonrpc.AdminUser, jsonrpc.AdminGroup, cfg.Proxy.Password)
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	modelRouter.Refresh()
 
 	p := &Proxy{
@@ -337,8 +382,10 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 		notifier:      socket.NewNotifier(),
 		allowPrivate:  allowPrivateBackends,
 		providerRT:    providerRT,
-		inferenceAuth: auth.NewInferenceAuth(),
+		auth:          proxyAuth,
+		inferenceAuth: inferenceAuth,
 		wsTickets:     make(map[string]time.Time),
+		cm:            cm,
 	}
 
 	//-------------------------------------------

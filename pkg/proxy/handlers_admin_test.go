@@ -11,26 +11,43 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 var ProxyLoginSecret = "test-password"
 
+const testDefaultConfigYAML = `
+proxy:
+  listen: ":0"
+  password: test-password
+admin:
+  secret: s 
+mesh:
+  name: box
+  address: http://10.0.0.1:4002
+providers:
+- id: local
+  type: ollama
+  base_url: http://127.0.0.1:11434
+  token: secret-local
+  private: false
+  model_discovery: pinned
+`
+
 func testProxy(t *testing.T) *Proxy {
 	t.Helper()
-	return newTestProxy(t, nil, true)
+	return newTestProxy(t, testable.MustConfigManager(testDefaultConfigYAML))
 }
 
-func newTestProxy(t *testing.T, providers []core.Provider, allowPrivate bool) *Proxy {
+func newTestProxy(t *testing.T, cm *testable.ConfigManager) *Proxy {
 	t.Helper()
+
 	orch := testable.NewMeshOrchestrator()
-	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", providers, allowPrivate)
+	p, err := NewProxy(orch.NewMeshNode("000001", "left"), cm)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	p.WithAdminToken(ProxyLoginSecret)
 	return p
 }
 func doProxyJSONNoLogin(t *testing.T, p *Proxy, method, path string, in, out any) error {
@@ -54,7 +71,8 @@ func getLoginToken(t *testing.T, p *Proxy, secret string) string {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	p := testProxy(t)
+	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
+
 	req := httptest.NewRequest(http.MethodGet, "/ui/", nil)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginSecret))
 	rec := httptest.NewRecorder()
@@ -91,7 +109,6 @@ func TestSecurityHeaders(t *testing.T) {
 
 func TestMeshAPIRequiresLogin(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken(ProxyLoginSecret)
 
 	err := doProxyJSONNoLogin(t, p, http.MethodGet, "/api/mesh/models", nil, nil)
 	assert.Equal(t, http.StatusUnauthorized, statusCode(err))
@@ -157,15 +174,14 @@ func TestAdminEnableToken(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	writeTestConfig(t, testConfigYAML)
+	cm := testable.MustConfigManager(testDefaultConfigYAML)
 
 	orch := testable.NewMeshOrchestrator()
 	orch.SetAdminAddress(ts.URL)
-	p, err := NewProxy(orch.NewMeshNode("000001", "left"), ":0", nil, true)
+	p, err := NewProxy(orch.NewMeshNode("000001", "left"), cm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.WithAdminToken(ProxyLoginSecret)
 
 	err = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": ""}, nil)
 	assert.Equal(t, http.StatusBadRequest, statusCode(err))
@@ -181,13 +197,8 @@ func TestAdminEnableToken(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, false, status.Enabled)
 
-	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Admin.Secret != "s" {
-		t.Fatalf("secret changed after bad token: %q", cfg.Admin.Secret)
-	}
+	cfg := cm.Config()
+	assert.Equal(t, "s", cfg.Admin.Secret)
 
 	err = doProxyJSON(t, p, http.MethodPost, "/api/admin/enabled", map[string]string{"token": "good-token"}, &status)
 	assert.NoError(t, err)
@@ -197,8 +208,7 @@ func TestAdminEnableToken(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, status.Enabled)
 
-	cfg, err = core.LoadConfigFile()
-	assert.NoError(t, err)
+	cfg = cm.Config()
 	assert.Equal(t, "good-token", cfg.Admin.Secret)
 	assert.Equal(t, "box", cfg.Mesh.Name)
 	assert.Equal(t, 1, len(cfg.Providers))

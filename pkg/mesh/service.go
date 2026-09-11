@@ -18,9 +18,9 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	"github.com/libp2p/go-libp2p/p2p/net/swarm"
-	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/security"
@@ -34,20 +34,14 @@ func init() {
 	observedaddrs.ActivationThresh = 1
 }
 
-const (
-	streamDialAttempts = 6
-	streamDialTimeout  = 30 * time.Second
-)
-
 type Service struct {
 	node      core.PeerNode
 	h         host.Host
-	res       *client.Reservation
 	relayInfo []peer.AddrInfo
 	ctrl      *api.MeshClient // mesh control api
 	peers     map[string]peer.ID
 	handler   http.HandlerFunc
-	config    *core.MeshConfig
+	config    *config.MeshConfig
 	discovery *DiscoveryManager
 	allow     *PeerAllowList
 }
@@ -344,7 +338,7 @@ func (m *Service) Disconnect() error {
 	return nil
 }
 
-func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
+func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
 	mesh, err := api.NewClient(mc.Address, mc.Secret).Mesh("default")
 	if err != nil {
 		return nil, fmt.Errorf("could open mesh admin client. err:%v\n", err)

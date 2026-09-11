@@ -6,13 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 )
 
 func TestRouter(t *testing.T) {
 	node := core.NewPeerNode("self", "Self")
 
-	d := NewModelDiscovery(node, []core.Provider{
+	d := NewModelDiscovery(node, []config.Provider{
 		{
 			ID:        "test",
 			Type:      "test",
@@ -20,7 +21,7 @@ func TestRouter(t *testing.T) {
 			Token:     "test-token",
 			Private:   true,
 			Discovery: "whitelist",
-			Models: []core.ModelConfig{
+			Models: []config.ModelConfig{
 				{
 					Model:   "test-model",
 					Private: true,

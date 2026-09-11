@@ -11,7 +11,7 @@ import (
 
 	"charm.land/huh/v2"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
@@ -23,12 +23,12 @@ var (
 	defaultRelayKeyPath = "relay.key"
 	defaultConfigPath   = "config.yaml"
 
-	defaultProxyListen    = core.DefaultProxyListen
+	defaultProxyListen    = config.DefaultProxyListen
 	defaultOllamaVersion  = "0.33.0"
 	defaultMeshName       = ""
 	defaultAdminAddress   = "http://127.0.0.1:4002"
-	defaultAdminPort      = core.DefaultAdminPort
-	defaultRelayPort      = core.DefaultRelayPort
+	defaultAdminPort      = config.DefaultAdminPort
+	defaultRelayPort      = config.DefaultRelayPort
 	defaultPublicAddress  = "auto"
 	defaultAppPort        = 0
 	defaultForcePrivate   = false

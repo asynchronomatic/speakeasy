@@ -7,21 +7,31 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
+	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 func testLocalProvider(t *testing.T, backendURL, token string) *Proxy {
 	t.Helper()
-	return newTestProxy(t, []core.Provider{{
-		ID:        "local",
-		Type:      "test",
-		BaseURL:   backendURL,
-		Token:     token,
-		Discovery: "whitelist",
-		Models: []core.ModelConfig{{
-			Model: "echo",
-		}},
-	}}, true)
+
+	cm := testable.MustConfigManager(testDefaultConfigYAML)
+	cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.AllowPrivateBackends = true
+		cfg.Providers = []config.Provider{{
+			ID:        "local",
+			Type:      "test",
+			BaseURL:   backendURL,
+			Token:     token,
+			Discovery: "whitelist",
+			Models: []config.ModelConfig{{
+				Model: "echo",
+			}},
+		}}
+		return nil
+	})
+
+	return newTestProxy(t, cm)
+
 }
 
 func TestReverseProxyStripsClientAuth(t *testing.T) {
@@ -90,13 +100,18 @@ func TestReverseProxyRejectsRedirect(t *testing.T) {
 }
 
 func TestReverseProxyRejectsMetadataURL(t *testing.T) {
-	p := newTestProxy(t, []core.Provider{{
-		ID:        "meta",
-		Type:      "test",
-		BaseURL:   "http://169.254.169.254/",
-		Discovery: "whitelist",
-		Models:    []core.ModelConfig{{Model: "echo"}},
-	}}, true)
+	cm := testable.MustConfigManager(testDefaultConfigYAML)
+	cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Providers = []config.Provider{{
+			ID:        "meta",
+			Type:      "test",
+			BaseURL:   "http://169.254.169.254/",
+			Discovery: "whitelist",
+			Models:    []config.ModelConfig{{Model: "echo"}},
+		}}
+		return nil
+	})
+	p := newTestProxy(t, cm)
 	rec := postModel(t, p, "/v1/chat/completions", "echo")
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status %d want 502 body %s", rec.Code, rec.Body.String())

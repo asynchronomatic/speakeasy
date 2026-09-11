@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
@@ -31,11 +31,11 @@ func runJoin(inviteURL string) error {
 	if err := joinWithInvite(inviteURL, existing); err != nil {
 		return err
 	}
-	config := core.MustLoadConfig()
+	config := config.MustLoadConfig()
 	return runProxy(config)
 }
 
-func existingJoinConfig() (*core.Config, bool, error) {
+func existingJoinConfig() (*config.Config, bool, error) {
 	if !fileExists(defaultConfigPath) {
 		return nil, true, nil
 	}
@@ -44,7 +44,7 @@ func existingJoinConfig() (*core.Config, bool, error) {
 	if err != nil {
 		abs = defaultConfigPath
 	}
-	cfg, err := core.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, false, fmt.Errorf("load %s: %w", defaultConfigPath, err)
 	}
@@ -74,7 +74,7 @@ func existingJoinConfig() (*core.Config, bool, error) {
 	return cfg, true, nil
 }
 
-func existingJoinWarning(abs string, cfg *core.Config) string {
+func existingJoinWarning(abs string, cfg *config.Config) string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "."
@@ -89,7 +89,7 @@ func existingJoinWarning(abs string, cfg *core.Config) string {
 	return b.String()
 }
 
-func joinWithInvite(link string, existing *core.Config) error {
+func joinWithInvite(link string, existing *config.Config) error {
 	key, err := mesh.LoadOrCreateKey(defaultNodeKeyPath)
 	if err != nil {
 		return fmt.Errorf("node key: %w", err)
@@ -137,7 +137,7 @@ func joinWithInvite(link string, existing *core.Config) error {
 // proxy.password. Tests replace it.
 var askProxyPassword = promptProxyPassword
 
-func ensureProxyPassword(cfg *core.Config) error {
+func ensureProxyPassword(cfg *config.Config) error {
 	if cfg == nil {
 		return fmt.Errorf("config is required")
 	}
@@ -192,8 +192,8 @@ func promptProxyPassword() (string, error) {
 	return strings.TrimSpace(password), nil
 }
 
-func configFromInvite(resp *api.RedeemInviteResponse, existing *core.Config) *core.Config {
-	var cfg *core.Config
+func configFromInvite(resp *api.RedeemInviteResponse, existing *config.Config) *config.Config {
+	var cfg *config.Config
 	if existing != nil {
 		cp := *existing
 		cfg = &cp
@@ -206,19 +206,19 @@ func configFromInvite(resp *api.RedeemInviteResponse, existing *core.Config) *co
 	return cfg
 }
 
-func defaultJoinConfig() *core.Config {
-	cfg := &core.Config{}
-	cfg.Proxy.Listen = core.DefaultProxyListen
+func defaultJoinConfig() *config.Config {
+	cfg := &config.Config{}
+	cfg.Proxy.Listen = config.DefaultProxyListen
 	cfg.Proxy.AllowPrivateBackends = true
-	cfg.Admin.AdminPort = core.DefaultAdminPort
-	cfg.Admin.RelayPort = core.DefaultRelayPort
+	cfg.Admin.AdminPort = config.DefaultAdminPort
+	cfg.Admin.RelayPort = config.DefaultRelayPort
 	cfg.Admin.PublicAddress = "auto"
 	cfg.Mesh.PublicAddress = "auto"
 	cfg.Mesh.Port = 0
 	cfg.Mesh.ForcePrivate = false
 	cfg.Mesh.MDNSEnabled = true
 	cfg.Mesh.Name, _ = os.Hostname()
-	cfg.Providers = []core.Provider{{
+	cfg.Providers = []config.Provider{{
 		ID:        "localhost",
 		Type:      "ollama",
 		BaseURL:   "http://127.0.0.1:11434",

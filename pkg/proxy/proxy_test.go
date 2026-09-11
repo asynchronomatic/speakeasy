@@ -9,12 +9,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
-var testProviders = []core.Provider{
+var testProviders = []config.Provider{
 	{
 		ID:        "test-provider-1",
 		Type:      "test",
@@ -22,7 +23,7 @@ var testProviders = []core.Provider{
 		Token:     "12345",
 		Private:   false,
 		Discovery: "whitelist",
-		Models: []core.ModelConfig{
+		Models: []config.ModelConfig{
 			{
 				Model:   "test-model-0",
 				Private: false,
@@ -52,7 +53,7 @@ var testProviders = []core.Provider{
 		Token:     "5678",
 		Private:   false,
 		Discovery: "whitelist",
-		Models: []core.ModelConfig{
+		Models: []config.ModelConfig{
 			{
 				Model:   "test-model-0",
 				Private: false,
@@ -91,15 +92,13 @@ func TestNewProxy(t *testing.T) {
 	testMeshLeft := orch.NewMeshNode("000001", "left")
 	testMeshRight := orch.NewMeshNode("000002", "right")
 
-	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil, true)
+	proxyLeft, err := NewProxy(testMeshLeft, testable.MustConfigManager(testDefaultConfigYAML))
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyLeft.WithAdminToken(ProxyLoginSecret)
 
-	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders, true)
+	proxyRight, err := NewProxy(testMeshRight, testable.MustConfigManager(testDefaultConfigYAML))
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyRight.WithAdminToken(ProxyLoginSecret)
 
 	go func() {
 		_ = core.RunInterruptibleContext(context.Background(), proxyLeft, proxyRight)

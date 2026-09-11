@@ -1,4 +1,4 @@
-package core
+package config
 
 import (
 	"os"
@@ -76,8 +76,8 @@ type MeshConfig struct {
 }
 
 type InferenceToken struct {
-	Name    string    `yaml:"name"`    // friendly name for the token
-	Token   string    `yaml:"token"`   // bcrypt hash of the secret
+	Name    string    `yaml:"name"`  // friendly name for the token
+	Token   string    `yaml:"token"` // bcrypt hash of the secret
 	Created time.Time `yaml:"created"`
 }
 
@@ -98,7 +98,7 @@ type Config struct {
 	Debug     bool        `yaml:"debug"`
 }
 
-func applyConfigDefaults(config *Config) {
+func ApplyConfigDefaults(config *Config) {
 	if config.Proxy.Listen == "" {
 		config.Proxy.Listen = DefaultProxyListen
 	}
@@ -142,7 +142,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	applyConfigDefaults(config)
+	ApplyConfigDefaults(config)
 	return config, nil
 }
 

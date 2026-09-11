@@ -7,7 +7,7 @@ import (
 
 	"charm.land/huh/v2"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -24,10 +24,10 @@ func resetMembership() error {
 	configExists := fileExists(defaultConfigPath)
 	keyExists := fileExists(defaultNodeKeyPath)
 
-	var cfg *core.Config
+	var cfg *config.Config
 	if configExists {
 		var err error
-		cfg, err = core.LoadConfigFile()
+		cfg, err = config.LoadConfigFile()
 		if err != nil {
 			return fmt.Errorf("load %s: %w", defaultConfigPath, err)
 		}
@@ -49,7 +49,7 @@ func resetMembership() error {
 
 	if cfg != nil {
 		clearMembership(cfg)
-		if err := core.SaveConfig(cfg); err != nil {
+		if err := config.SaveConfig(cfg); err != nil {
 			return fmt.Errorf("write %s: %w", defaultConfigPath, err)
 		}
 		log.Infof("cleared membership settings in %s\n", defaultConfigPath)
@@ -111,7 +111,7 @@ func resetAll() error {
 	return nil
 }
 
-func hasMembership(cfg *core.Config) bool {
+func hasMembership(cfg *config.Config) bool {
 	if cfg == nil {
 		return false
 	}
@@ -121,14 +121,14 @@ func hasMembership(cfg *core.Config) bool {
 		strings.TrimSpace(cfg.Mesh.MeshId) != ""
 }
 
-func clearMembership(cfg *core.Config) {
+func clearMembership(cfg *config.Config) {
 	cfg.Admin.Address = ""
 	cfg.Admin.Secret = ""
 	cfg.Mesh.Address = ""
 	cfg.Mesh.MeshId = ""
 }
 
-func membershipResetDescription(cfg *core.Config, keyExists bool) string {
+func membershipResetDescription(cfg *config.Config, keyExists bool) string {
 	var b strings.Builder
 	b.WriteString("This detaches the node from its current mesh. Proxy settings, providers, and relay.key are kept.\n")
 	if cfg != nil {

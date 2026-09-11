@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 )
 
 func TestRedeemInvite(t *testing.T) {
@@ -105,7 +105,7 @@ func TestRedeemInviteRejectsMetadata(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, core.ErrProviderURLMetadata) {
+	if !errors.Is(err, config.ErrProviderURLMetadata) {
 		t.Fatalf("err=%v want metadata", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestRedeemInviteRejectsUserinfo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, core.ErrProviderURLUserinfo) {
+	if !errors.Is(err, config.ErrProviderURLUserinfo) {
 		t.Fatalf("err=%v want userinfo", err)
 	}
 }

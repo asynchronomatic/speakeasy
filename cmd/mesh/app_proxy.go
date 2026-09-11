@@ -5,30 +5,34 @@ import (
 	"strings"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy"
 )
 
-func runProxy(config *core.Config) error {
-	if config.Proxy.Password == "" {
+func runProxy(cfg *config.Config) error {
+	if cfg.Proxy.Password == "" {
 		return fmt.Errorf("proxy password is required")
 	}
 
-	service, err := mesh.NewService(&config.Mesh, nil)
+	service, err := mesh.NewService(&cfg.Mesh, nil)
 	if err != nil {
 		log.Fatalf("Could not initialize mesh err:%v\n", err)
 	}
-	p, _ := proxy.NewProxy(service, config.Proxy.Listen, config.Providers, config.PrivateBackendsAllowed())
-	p.WithAdminToken(config.Proxy.Password)
-	p.WithInferenceTokens(config.Proxy.InferenceTokens.Insecure, config.Proxy.InferenceTokens.Tokens)
 
-	attachAdminController(p, config)
+	cm := config.NewManager(config.DefaultConfigPath)
+
+	p, _ := proxy.NewProxy(service, cm)
+	//p.WithAdminToken(config.Proxy.Password)
+	//p.WithInferenceTokens(config.Proxy.InferenceTokens.Insecure, config.Proxy.InferenceTokens.Tokens)
+
+	attachAdminController(p, cfg) // FIXME, roll into proxy startup
 	return core.RunInterruptible(p)
 }
 
-func adminControllerAddr(config *core.Config) (addr, secret string, ok bool) {
+func adminControllerAddr(config *config.Config) (addr, secret string, ok bool) {
 	secret = strings.TrimSpace(config.Admin.Secret)
 	if secret == "" {
 		return "", "", false
@@ -43,7 +47,7 @@ func adminControllerAddr(config *core.Config) (addr, secret string, ok bool) {
 	return addr, secret, true
 }
 
-func attachAdminController(p *proxy.Proxy, config *core.Config) {
+func attachAdminController(p *proxy.Proxy, config *config.Config) {
 	addr, secret, ok := adminControllerAddr(config)
 	if !ok {
 		return
@@ -51,7 +55,7 @@ func attachAdminController(p *proxy.Proxy, config *core.Config) {
 	p.WithAdminController(api.NewClient(addr, secret).Admin())
 }
 
-func runHybrid(config *core.Config) error {
+func runHybrid(config *config.Config) error {
 	return fmt.Errorf("hybrid mode not implemented")
 }
 

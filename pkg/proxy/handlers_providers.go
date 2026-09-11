@@ -5,16 +5,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
+	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 )
 
 type providersListResponse struct {
-	Providers []core.Provider `json:"providers"`
+	Providers []config.Provider `json:"providers"`
 }
 
-func providerIndex(providers []core.Provider, id string) int {
+func providerIndex(providers []config.Provider, id string) int {
 	for i := range providers {
 		if providers[i].ID == id {
 			return i
@@ -23,7 +24,7 @@ func providerIndex(providers []core.Provider, id string) int {
 	return -1
 }
 
-func (p *Proxy) validateProvider(prov *core.Provider) error {
+func (p *Proxy) validateProvider(prov *config.Provider) error {
 	prov.ID = strings.TrimSpace(prov.ID)
 	prov.Type = strings.TrimSpace(prov.Type)
 	prov.BaseURL = strings.TrimSpace(prov.BaseURL)
@@ -36,32 +37,14 @@ func (p *Proxy) validateProvider(prov *core.Provider) error {
 	if prov.BaseURL == "" {
 		return jsonrpc.NewError(http.StatusBadRequest, "provider base_url is required")
 	}
-	if _, err := core.ParseProviderURL(prov.BaseURL, p.allowPrivate); err != nil {
+	if _, err := config.ParseProviderURL(prov.BaseURL, p.allowPrivate); err != nil {
 		return jsonrpc.NewError(http.StatusBadRequest, err.Error())
 	}
 	return nil
 }
 
-func (p *Proxy) loadProvidersConfig() (*core.Config, error) {
-	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		return nil, jsonrpc.NewError(http.StatusInternalServerError, err.Error())
-	}
-	if cfg.Providers == nil {
-		cfg.Providers = []core.Provider{}
-	}
-	return cfg, nil
-}
-
-func (p *Proxy) saveProvidersConfig(cfg *core.Config) error {
-	if err := core.SaveConfig(cfg); err != nil {
-		return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
-	}
-	return nil
-}
-
-func providersWithoutTokens(src []core.Provider) []core.Provider {
-	out := make([]core.Provider, len(src))
+func providersWithoutTokens(src []config.Provider) []config.Provider {
+	out := make([]config.Provider, len(src))
 	copy(out, src)
 	for i := range out {
 		out[i].Token = ""
@@ -69,7 +52,7 @@ func providersWithoutTokens(src []core.Provider) []core.Provider {
 	return out
 }
 
-func providerWithoutToken(prov core.Provider) core.Provider {
+func providerWithoutToken(prov config.Provider) config.Provider {
 	prov.Token = ""
 	return prov
 }
@@ -83,37 +66,45 @@ func keepProviderToken(submitted, existing string) string {
 }
 
 func (p *Proxy) providersListHandler(rpc *jsonrpc.RPC) error {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	cfg, err := p.loadProvidersConfig()
+	resp := providersListResponse{}
+
+	err := p.cm.ReadConfig(func(config *config.Config) error {
+		resp.Providers = providersWithoutTokens(config.Providers)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	return rpc.ReplyObject(&providersListResponse{Providers: providersWithoutTokens(cfg.Providers)})
+	return rpc.ReplyObject(&resp)
 }
 
 func (p *Proxy) providerAddHandler(rpc *jsonrpc.RPC) error {
-	var prov core.Provider
+	var prov config.Provider
 	if err := rpc.GetObject(&prov); err != nil {
 		return err
 	}
+
+	log.Warnf("providerAddHandler %s", prov.ID)
+
 	if err := p.validateProvider(&prov); err != nil {
+		log.Warnf("providerAddHandler %s %s", prov.ID, err)
 		return err
 	}
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	cfg, err := p.loadProvidersConfig()
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		log.Warnf("check provider id already exists: %s", prov.ID)
+		if providerIndex(cfg.Providers, prov.ID) >= 0 {
+
+			return jsonrpc.NewError(http.StatusConflict, "provider id already exists")
+		}
+		log.Warnf("providerAddHandler %s %s", prov.ID, "OKIEDOKIE")
+		cfg.Providers = append(cfg.Providers, prov)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	if providerIndex(cfg.Providers, prov.ID) >= 0 {
-		return jsonrpc.NewError(http.StatusConflict, "provider id already exists")
-	}
-	cfg.Providers = append(cfg.Providers, prov)
-	if err := p.saveProvidersConfig(cfg); err != nil {
-		return err
-	}
+
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(providerWithoutToken(prov))
 }
@@ -123,7 +114,7 @@ func (p *Proxy) providerUpdateHandler(rpc *jsonrpc.RPC) error {
 	if id == "" {
 		return jsonrpc.NewError(http.StatusBadRequest, "provider id is required")
 	}
-	var prov core.Provider
+	var prov config.Provider
 	if err := rpc.GetObject(&prov); err != nil {
 		return err
 	}
@@ -132,19 +123,17 @@ func (p *Proxy) providerUpdateHandler(rpc *jsonrpc.RPC) error {
 		return err
 	}
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	cfg, err := p.loadProvidersConfig()
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		i := providerIndex(cfg.Providers, id)
+		if i < 0 {
+			return jsonrpc.NewError(http.StatusNotFound, "provider not found")
+		}
+
+		prov.Token = keepProviderToken(prov.Token, cfg.Providers[i].Token)
+		cfg.Providers[i] = prov
+		return nil
+	})
 	if err != nil {
-		return err
-	}
-	i := providerIndex(cfg.Providers, id)
-	if i < 0 {
-		return jsonrpc.NewError(http.StatusNotFound, "provider not found")
-	}
-	prov.Token = keepProviderToken(prov.Token, cfg.Providers[i].Token)
-	cfg.Providers[i] = prov
-	if err := p.saveProvidersConfig(cfg); err != nil {
 		return err
 	}
 	p.notifier.Broadcast() // notify ui of update
@@ -157,21 +146,17 @@ func (p *Proxy) providerDeleteHandler(rpc *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "provider id is required")
 	}
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	cfg, err := p.loadProvidersConfig()
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		i := providerIndex(cfg.Providers, id)
+		if i < 0 {
+			return jsonrpc.NewError(http.StatusNotFound, "provider not found")
+		}
+		cfg.Providers = append(cfg.Providers[:i], cfg.Providers[i+1:]...)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	i := providerIndex(cfg.Providers, id)
-	if i < 0 {
-		return jsonrpc.NewError(http.StatusNotFound, "provider not found")
-	}
-	cfg.Providers = append(cfg.Providers[:i], cfg.Providers[i+1:]...)
-	if err := p.saveProvidersConfig(cfg); err != nil {
-		return err
-	}
-
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(map[string]string{"id": id})
 }
@@ -193,7 +178,7 @@ type inferenceTokenList struct {
 	Tokens   []inferenceToken `json:"tokens"`
 }
 
-func inferenceTokenIndex(tokens []core.InferenceToken, token string) int {
+func inferenceTokenIndex(tokens []config.InferenceToken, token string) int {
 	for i := range tokens {
 		parsed, _, err := auth.ParseInferenceToken(tokens[i].Token)
 		if err != nil {
@@ -211,7 +196,7 @@ func Truncate(s string) string {
 	return parts[0]
 }
 
-func publicInferenceTokens(cfg *core.Config) inferenceTokenList {
+func publicInferenceTokens(cfg *config.Config) inferenceTokenList {
 	src := cfg.Proxy.InferenceTokens.Tokens
 	out := make([]inferenceToken, 0, len(src))
 	for _, tok := range src {
@@ -234,21 +219,18 @@ func (p *Proxy) inferenceTokenCreate(rpc *jsonrpc.RPC) error {
 	}
 
 	if req.Token == nil {
-		p.inferenceAuth.SetInsecure(req.Insecure)
-		// persist to config
+		var resp inferenceTokenList
 
-		// this needs protection via config updater lock
-		cfg, err := p.loadProvidersConfig()
+		err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+			cfg.Proxy.InferenceTokens.Insecure = req.Insecure
+			resp = publicInferenceTokens(cfg)
+			return nil
+		})
 		if err != nil {
 			return err
 		}
-
-		cfg.Proxy.InferenceTokens.Insecure = req.Insecure
-		if err := p.saveProvidersConfig(cfg); err != nil {
-			return err
-		}
-
-		return rpc.ReplyObject(publicInferenceTokens(cfg))
+		p.inferenceAuth.SetInsecure(req.Insecure)
+		return rpc.ReplyObject(&resp)
 	}
 
 	name := strings.TrimSpace(req.Token.Name)
@@ -261,23 +243,16 @@ func (p *Proxy) inferenceTokenCreate(rpc *jsonrpc.RPC) error {
 		return err
 	}
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	// FIXME: proxy should just own the config....
-	cfg, err := p.loadProvidersConfig()
-	if err != nil {
-		_ = p.inferenceAuth.RevokeToken(hashed)
-		return err
-	}
-
 	created := time.Now().UTC()
-	cfg.Proxy.InferenceTokens.Tokens = append(cfg.Proxy.InferenceTokens.Tokens, core.InferenceToken{
-		Name:    name,
-		Token:   hashed,
-		Created: created,
+	err = p.cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.InferenceTokens.Tokens = append(cfg.Proxy.InferenceTokens.Tokens, config.InferenceToken{
+			Name:    name,
+			Token:   hashed,
+			Created: created,
+		})
+		return nil
 	})
-
-	if err := p.saveProvidersConfig(cfg); err != nil {
+	if err != nil {
 		_ = p.inferenceAuth.RevokeToken(hashed)
 		return err
 	}
@@ -300,36 +275,32 @@ func (p *Proxy) inferenceTokenDelete(rpc *jsonrpc.RPC) error {
 
 	id = strings.TrimPrefix(id, auth.InferenceTokenPrefix)
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	cfg, err := p.loadProvidersConfig()
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		i := inferenceTokenIndex(cfg.Proxy.InferenceTokens.Tokens, id)
+		if i < 0 {
+			return jsonrpc.NewError(http.StatusNotFound, "token not found")
+		}
+		cfg.Proxy.InferenceTokens.Tokens = append(cfg.Proxy.InferenceTokens.Tokens[:i], cfg.Proxy.InferenceTokens.Tokens[i+1:]...)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	i := inferenceTokenIndex(cfg.Proxy.InferenceTokens.Tokens, id)
-	if i < 0 {
-		return jsonrpc.NewError(http.StatusNotFound, "token not found")
-	}
 
-	cfg.Proxy.InferenceTokens.Tokens = append(cfg.Proxy.InferenceTokens.Tokens[:i], cfg.Proxy.InferenceTokens.Tokens[i+1:]...)
-	if err := p.saveProvidersConfig(cfg); err != nil {
+	if err = p.inferenceAuth.RevokeTokenByKey(id); err != nil {
 		return err
 	}
 
-	err = p.inferenceAuth.RevokeTokenByKey(id)
-	if err != nil {
-		return err
-	}
 	p.notifier.Broadcast()
 	return rpc.ReplyObject(map[string]string{"id": id})
 }
 
 func (p *Proxy) inferenceTokensList(rpc *jsonrpc.RPC) error {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	cfg, err := p.loadProvidersConfig()
-	if err != nil {
-		return err
-	}
-	return rpc.ReplyObject(publicInferenceTokens(cfg))
+	var resp inferenceTokenList
+	p.cm.ReadConfig(func(cfg *config.Config) error {
+		resp = publicInferenceTokens(cfg)
+		return nil
+	})
+
+	return rpc.ReplyObject(&resp)
 }

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
@@ -28,7 +28,7 @@ func parseInviteURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("invalid invite url")
 	}
 	if u.User != nil {
-		return nil, core.ErrProviderURLUserinfo
+		return nil, config.ErrProviderURLUserinfo
 	}
 	return u, nil
 }
@@ -47,7 +47,7 @@ func RedeemInvite(inviteURL string, node Node) (*RedeemInviteResponse, error) {
 	}
 
 	base := u.Scheme + "://" + u.Host
-	if _, err := core.ParseProviderURL(base, true); err != nil {
+	if _, err := config.ParseProviderURL(base, true); err != nil {
 		return nil, err
 	}
 
@@ -57,7 +57,7 @@ func RedeemInvite(inviteURL string, node Node) (*RedeemInviteResponse, error) {
 	}
 
 	var resp RedeemInviteResponse
-	c := jsonrpc.NewClient(base, "").WithDoer(core.NewProviderHTTPClient(true))
+	c := jsonrpc.NewClient(base, "").WithDoer(config.NewProviderHTTPClient(true))
 	if err := c.Post(path, RedeemInviteRequest{Node: node}, &resp); err != nil {
 		return nil, err
 	}

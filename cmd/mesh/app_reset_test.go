@@ -10,14 +10,14 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 )
 
 func TestResetMembership(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Proxy.Listen = ":7777"
 	cfg.Proxy.Password = "keep-pass"
 	cfg.Admin.Address = "http://10.0.0.30:4002"
@@ -28,7 +28,7 @@ func TestResetMembership(t *testing.T) {
 	cfg.Mesh.Secret = "mesh-secret"
 	cfg.Mesh.MeshId = "default"
 	cfg.Mesh.MDNSEnabled = true
-	cfg.Providers = []core.Provider{{
+	cfg.Providers = []config.Provider{{
 		ID:      "custom",
 		Type:    "openai",
 		BaseURL: "http://127.0.0.1:8080",
@@ -55,7 +55,7 @@ func TestResetMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := core.LoadConfigFile()
+	got, err := config.LoadConfigFile()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestResetMembershipAborted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Admin.Secret = "admin-secret"
 	cfg.Mesh.MeshId = "default"
 	writeTestConfig(t, cfg)
@@ -98,7 +98,7 @@ func TestResetMembershipAborted(t *testing.T) {
 	if err := runReset(false); err != nil {
 		t.Fatal(err)
 	}
-	got, err := core.LoadConfigFile()
+	got, err := config.LoadConfigFile()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestResetAll(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	writeTestConfig(t, &core.Config{})
+	writeTestConfig(t, &config.Config{})
 	writeTestFile(t, defaultNodeKeyPath, []byte("node-identity"))
 	writeTestFile(t, defaultRelayKeyPath, []byte("relay-identity"))
 
@@ -143,7 +143,7 @@ func TestResetAll(t *testing.T) {
 func TestResetCLIAll(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeTestConfig(t, &core.Config{})
+	writeTestConfig(t, &config.Config{})
 	writeTestFile(t, defaultNodeKeyPath, []byte("node-identity"))
 
 	confirmReset = func(string, string) (bool, error) { return true, nil }
@@ -193,7 +193,7 @@ func TestResetNothing(t *testing.T) {
 	}
 }
 
-func writeTestConfig(t *testing.T, cfg *core.Config) {
+func writeTestConfig(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

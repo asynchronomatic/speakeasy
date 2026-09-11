@@ -12,7 +12,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 )
 
 func TestConfigFromInvite(t *testing.T) {
@@ -27,7 +27,7 @@ func TestConfigFromInvite(t *testing.T) {
 	if cfg.Mesh.MeshId != "default" || cfg.Mesh.Secret != "sekrit" {
 		t.Fatalf("mesh %+v", cfg.Mesh)
 	}
-	if cfg.Proxy.Listen != core.DefaultProxyListen {
+	if cfg.Proxy.Listen != config.DefaultProxyListen {
 		t.Fatalf("listen %q", cfg.Proxy.Listen)
 	}
 	if !cfg.Proxy.AllowPrivateBackends {
@@ -39,7 +39,7 @@ func TestConfigFromInvite(t *testing.T) {
 }
 
 func TestConfigFromInviteKeepsExisting(t *testing.T) {
-	existing := &core.Config{}
+	existing := &config.Config{}
 	existing.Proxy.Listen = ":9999"
 	existing.Proxy.Password = "kept-pass"
 	existing.Admin.AdminPort = 4111
@@ -51,7 +51,7 @@ func TestConfigFromInviteKeepsExisting(t *testing.T) {
 	existing.Mesh.MDNSEnabled = false
 	existing.Mesh.ForcePrivate = true
 	existing.Mesh.Port = 1234
-	existing.Providers = []core.Provider{{
+	existing.Providers = []config.Provider{{
 		ID:      "custom",
 		Type:    "openai",
 		BaseURL: "http://127.0.0.1:8080",
@@ -114,7 +114,7 @@ func TestRunJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := core.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	existing := &core.Config{}
+	existing := &config.Config{}
 	existing.Proxy.Listen = ":7777"
 	existing.Proxy.Password = "keep-pass"
 	existing.Admin.Secret = "keep-admin"
@@ -139,7 +139,7 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	existing.Mesh.Secret = "old-secret"
 	existing.Mesh.MeshId = "old-mesh"
 	existing.Mesh.MDNSEnabled = false
-	existing.Providers = []core.Provider{{
+	existing.Providers = []config.Provider{{
 		ID:      "custom",
 		Type:    "openai",
 		BaseURL: "http://127.0.0.1:8080",
@@ -179,7 +179,7 @@ func TestRunJoinExistingConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := core.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	existing := &core.Config{}
+	existing := &config.Config{}
 	existing.Proxy.Listen = ":7777"
 	existing.Mesh.Name = "box-1"
 
@@ -225,7 +225,7 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	if !asked {
 		t.Fatal("expected password prompt")
 	}
-	cfg, err := core.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 }
 
 func TestEnsureProxyPasswordSkipsWhenSet(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Proxy.Password = "already"
 	askProxyPassword = func() (string, error) {
 		t.Fatal("should not prompt")
@@ -262,7 +262,7 @@ func TestExistingJoinConfigAbsent(t *testing.T) {
 }
 
 func TestExistingJoinWarning(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Mesh.MeshId = "default"
 	cfg.Mesh.Address = "http://10.0.0.30:4002"
 	got := existingJoinWarning("/tmp/mesh/config.yaml", cfg)
@@ -279,7 +279,7 @@ func TestExistingJoinWarning(t *testing.T) {
 }
 
 func TestAdminControllerAddr(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	if _, _, ok := adminControllerAddr(cfg); ok {
 		t.Fatal("empty config should not attach admin")
 	}

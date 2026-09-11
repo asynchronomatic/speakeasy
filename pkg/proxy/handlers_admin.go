@@ -7,7 +7,7 @@ import (
 	"github.com/negrel/assert"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
@@ -38,26 +38,15 @@ func (p *Proxy) adminEnableHandler(rpc *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusPreconditionFailed, "invalid token")
 	}
 
-	p.lock.Lock()
-	err := func() error {
-		cfg, err := core.LoadConfigFile()
-		if err != nil {
-			return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
-		}
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
 		cfg.Admin.Address = p.mesh.AdminAddress()
 		cfg.Admin.Secret = req.Token
-		if err := core.SaveConfig(cfg); err != nil {
-			return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
-		}
-
-		p.WithAdminController(admin)
 		return nil
-	}()
-	p.lock.Unlock()
-
+	})
 	if err != nil {
 		return err
 	}
+	p.WithAdminController(admin)
 
 	resp := struct {
 		Enabled bool `json:"enabled"`

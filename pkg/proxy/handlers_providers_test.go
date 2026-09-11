@@ -4,26 +4,20 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
+	"github.com/asynchronomatic/speakeasy/testable"
 )
-
-func writeTestConfig(t *testing.T, yaml string) {
-	t.Helper()
-	t.Chdir(t.TempDir())
-	if err := os.WriteFile("config.yaml", []byte(yaml), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
 
 const testConfigYAML = `proxy:
   listen: ":4080"
+  password: test-password
+  allow_private_backends: true
 admin:
   secret: s
 mesh:
@@ -39,8 +33,8 @@ providers:
 `
 
 func TestProvidersList(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	resp := providersListResponse{}
 	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil, &resp)
@@ -56,28 +50,28 @@ func TestProvidersList(t *testing.T) {
 }
 
 func TestProvidersListEmpty(t *testing.T) {
-	writeTestConfig(t, `proxy:
+	cm := testable.MustConfigManager(`proxy:
   listen: ":1"
+  password: test-password
 mesh:
   address: http://x
 `)
-	p := testProxy(t)
+	p := newTestProxy(t, cm)
 	resp := providersListResponse{}
 	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/providers", nil, &resp)
 	assert.NoError(t, err)
 
 	got := resp.Providers
-	if got == nil || len(got) != 0 {
-		t.Fatalf("want empty list, got %+v", got)
-	}
+	assert.NotNil(t, got)
+	assert.Equal(t, 0, len(got))
 }
 
 func TestProviderAddUpdateDelete(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
-	var added core.Provider
-	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	var added config.Provider
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:        "cloud",
 		Type:      "openai",
 		BaseURL:   "https://api.example",
@@ -93,9 +87,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	assert.Equal(t, true, added.Private)
 	assert.Equal(t, "whitelist", added.Discovery)
 
-	cfg, err := core.LoadConfigFile()
-	require.NoError(t, err)
-
+	cfg := cm.Config()
 	assert.Equal(t, "http://10.0.0.1:4002", cfg.Mesh.Address)
 	assert.Equal(t, ":4080", cfg.Proxy.Listen)
 	assert.Equal(t, 2, len(cfg.Providers))
@@ -107,8 +99,8 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	assert.Equal(t, "secret-local", local.Token)
 	assert.Equal(t, "tok", cloud.Token)
 
-	var updated core.Provider
-	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	var updated config.Provider
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "new-tok",
@@ -123,8 +115,8 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	assert.Equal(t, false, updated.Private)
 	assert.Equal(t, "all", updated.Discovery)
 
-	var gotCloud core.Provider
-	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	var gotCloud config.Provider
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "*",
@@ -133,11 +125,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}, &gotCloud)
 	assert.NoError(t, err)
 
-	cfg, err = core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	cfg = cm.Config()
 	for _, pr := range cfg.Providers {
 		if pr.ID == "cloud" {
 			gotCloud = pr
@@ -148,7 +136,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}
 	assert.Equal(t, "new-tok", gotCloud.Token)
 
-	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", core.Provider{
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
 		Type:      "openai",
 		BaseURL:   "https://api.example/v1",
 		Token:     "",
@@ -157,10 +145,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}, nil)
 	assert.NoError(t, err)
 
-	cfg, err = core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfg = cm.Config()
 	for _, pr := range cfg.Providers {
 		if pr.ID == "cloud" && pr.Token != "new-tok" {
 			t.Fatalf("empty token overwrote cloud token %q", pr.Token)
@@ -180,8 +165,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	err = doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/cloud", nil, nil)
 	assert.NoError(t, err)
 
-	cfg, err = core.LoadConfigFile()
-	require.NoError(t, err)
+	cfg = cm.Config()
 	require.Equal(t, 1, len(cfg.Providers))
 	assert.Equal(t, "local", cfg.Providers[0].ID)
 	assert.Equal(t, "secret-local", cfg.Providers[0].Token)
@@ -189,9 +173,9 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 }
 
 func TestProviderAddDuplicate(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
-	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:      "local",
 		Type:    "ollama",
 		BaseURL: "http://127.0.0.1:11434",
@@ -200,16 +184,15 @@ func TestProviderAddDuplicate(t *testing.T) {
 }
 
 func TestProviderAddRequiresFields(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
-	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{Type: "ollama", BaseURL: "http://x"}, nil)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{Type: "ollama", BaseURL: "http://x"}, nil)
 	assert.Equal(t, http.StatusBadRequest, statusCode(err))
 }
 
 func TestProviderAddRejectsUnsafeURL(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := newTestProxy(t, nil, true)
-	cases := []core.Provider{
+	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
+	cases := []config.Provider{
 		{ID: "a", Type: "ollama", BaseURL: "file:///etc/passwd"},
 		{ID: "b", Type: "ollama", BaseURL: "http://169.254.169.254/"},
 		{ID: "c", Type: "ollama", BaseURL: "http://metadata.google.internal/"},
@@ -222,16 +205,22 @@ func TestProviderAddRejectsUnsafeURL(t *testing.T) {
 }
 
 func TestProviderAddRejectsPrivateWithoutOptIn(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := newTestProxy(t, nil, false)
-	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	cm := testable.MustConfigManager(testConfigYAML)
+	err := cm.UpdateConfig(func(config *config.Config) error {
+		config.Proxy.AllowPrivateBackends = false
+		return nil
+	})
+	require.NoError(t, err)
+
+	p := newTestProxy(t, cm)
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:      "local2",
 		Type:    "ollama",
 		BaseURL: "http://127.0.0.1:11434",
 	}, nil)
 	assert.Equal(t, http.StatusBadRequest, statusCode(err))
 
-	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", core.Provider{
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:      "cloud",
 		Type:    "openai",
 		BaseURL: "https://api.example",
@@ -240,9 +229,9 @@ func TestProviderAddRejectsPrivateWithoutOptIn(t *testing.T) {
 }
 
 func TestProviderUpdateMissing(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
-	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/nope", core.Provider{
+
+	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
+	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/nope", config.Provider{
 		Type:    "ollama",
 		BaseURL: "http://x",
 	}, nil)
@@ -250,8 +239,7 @@ func TestProviderUpdateMissing(t *testing.T) {
 }
 
 func TestProviderRejectsNonJSONContentType(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
 
 	token := getLoginToken(t, p, ProxyLoginSecret)
 	assert.NotEqual(t, "", token)
@@ -267,8 +255,9 @@ func TestProviderRejectsNonJSONContentType(t *testing.T) {
 }
 
 func TestProviderRejectsCrossOrigin(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	req := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", strings.NewReader(`{"id":"x","type":"ollama","base_url":"http://x"}`))
 	req.Host = "127.0.0.1:4080"
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ProxyLoginSecret))
@@ -282,9 +271,7 @@ func TestProviderRejectsCrossOrigin(t *testing.T) {
 }
 
 func TestProviderDeleteMissing(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
-	p.WithAdminToken(ProxyLoginSecret)
+	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
 	err := doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/nope", nil, nil)
 	assert.Equal(t, http.StatusNotFound, statusCode(err))
 }

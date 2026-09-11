@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -77,10 +78,8 @@ func (p *Proxy) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 		})
 
 		if err := fn(rpc); err != nil {
-			if ce, ok := err.(*jsonrpc.Error); ok {
+			if ce, ok := errors.AsType[*jsonrpc.Error](err); ok {
 				_ = rpc.Error(ce.Code(), ce.Message())
-			} else {
-				_ = rpc.Error(http.StatusInternalServerError, err.Error())
 			}
 		}
 	}

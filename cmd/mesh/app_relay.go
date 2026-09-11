@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 
 	"github.com/asynchronomatic/speakeasy/pkg/admin"
@@ -10,7 +11,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
-func runAdminAndRelay(config *core.Config) error {
+func runAdminAndRelay(config *config.Config) error {
 	// Load (or create a new) the node identity, identity will persist in this file
 	key, err := mesh.LoadOrCreateKey("relay.key")
 	if err != nil {

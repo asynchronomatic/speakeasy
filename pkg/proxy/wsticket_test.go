@@ -18,7 +18,6 @@ import (
 
 func TestRefreshTicketRequiresAuth(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
 
 	client := testable.NewProxyClient("proxy", p.ServeHTTP)
 
@@ -28,10 +27,9 @@ func TestRefreshTicketRequiresAuth(t *testing.T) {
 
 func TestRefreshTicketSetsCookie(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
 
 	client := testable.NewProxyClient("proxy", p.ServeHTTP)
-	token, err := client.LoginGetToken("admin", "sekrit")
+	token, err := client.LoginGetToken("admin", ProxyLoginSecret)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
@@ -69,10 +67,9 @@ func TestRefreshTicketSetsCookie(t *testing.T) {
 
 func TestWebsocketQueryTokenRejected(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
 
 	client := testable.NewProxyClient("proxy", p.ServeHTTP)
-	token, err := client.LoginGetToken("admin", "sekrit")
+	token, err := client.LoginGetToken("admin", ProxyLoginSecret)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
@@ -85,13 +82,13 @@ func TestWebsocketQueryTokenRejected(t *testing.T) {
 
 func TestWebsocketUpgradeWithTicket(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
+
 	go p.notifier.Poll()
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
 
 	client := testable.NewProxyClient("proxy", p.ServeHTTP)
-	token, err := client.LoginGetToken("admin", "sekrit")
+	token, err := client.LoginGetToken("admin", ProxyLoginSecret)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
@@ -138,13 +135,13 @@ func TestWebsocketUpgradeWithTicket(t *testing.T) {
 
 func TestWebsocketUpgradeWithBearer(t *testing.T) {
 	p := testProxy(t)
-	p.WithAdminToken("sekrit")
+
 	go p.notifier.Poll()
 	ts := httptest.NewServer(p)
 	t.Cleanup(ts.Close)
 
 	client := testable.NewProxyClient("proxy", p.ServeHTTP)
-	token, err := client.LoginGetToken("admin", "sekrit")
+	token, err := client.LoginGetToken("admin", ProxyLoginSecret)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
@@ -171,7 +168,6 @@ func TestWSTicketExpires(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
 	req.AddCookie(&http.Cookie{Name: wsTicketCookie, Value: raw})
 	rec := httptest.NewRecorder()
-	p.WithAdminToken("sekrit")
 
 	p.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
