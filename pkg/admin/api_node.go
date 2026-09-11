@@ -260,14 +260,6 @@ func (s *Server) authenticateSessionToken(token string) (*auth.Properties, error
 	return &auth.Properties{User: claims.NodeID, Group: MeshGroup}, nil
 }
 
-func (s *Server) refreshSessionToken(token string) (string, int64, error) {
-	claims, err := s.sessionClaims(token)
-	if err != nil {
-		return "", 0, err
-	}
-	return s.issueSessionToken(claims.NodeID, SessionTokenTTL)
-}
-
 func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 	var req api.NodeLoginRequest
 	if err := ctx.GetObject(&req); err != nil {

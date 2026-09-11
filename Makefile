@@ -28,6 +28,7 @@ run-hybrid:
 
 test:
 	go test -tags assert github.com/asynchronomatic/speakeasy/...
+	- staticcheck ./...
 .PHONY: test
 
 test-verbose:

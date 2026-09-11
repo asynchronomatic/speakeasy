@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
-	"github.com/libp2p/go-libp2p/p2p/net/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/asynchronomatic/speakeasy/pkg/config"
@@ -61,12 +60,6 @@ func (m *Service) connectNode(destNode string) peer.ID {
 	destID := AddDestViaRelay(m.h, m.relayInfo[0], destNode)
 	m.peers[destNode] = destID
 	return destID
-}
-
-func (m *Service) clearDialBackoff(id peer.ID) {
-	if sw, ok := m.h.Network().(*swarm.Swarm); ok {
-		sw.Backoff().Clear(id)
-	}
 }
 
 // openStreamDirect attempts to open a stream on a direct connection, if we do not have a direct connection a dial is attempted
@@ -249,35 +242,6 @@ func (m *Service) GetPeerMap() (map[string]core.PeerNode, error) {
 	return peers, err
 }
 
-func (m *Service) diffNodes(old, new map[string]api.Node) (map[string]api.Node, map[string]api.Node) {
-	addedOrChanged := make(map[string]api.Node)
-	removed := make(map[string]api.Node)
-
-	// Find added or changed nodes
-	for id, newNode := range new {
-		if id == m.node.ID { // filter self
-			continue
-		}
-
-		if oldNode, exists := old[id]; !exists || !oldNode.LastUpdate.Equal(newNode.LastUpdate) {
-			addedOrChanged[id] = newNode
-		}
-	}
-
-	// Find removed nodes
-	for id, oldNode := range old {
-		if id == m.node.ID { // filter self
-			continue
-		}
-
-		if _, exists := new[id]; !exists {
-			removed[id] = oldNode
-		}
-	}
-
-	return addedOrChanged, removed
-}
-
 func (m *Service) GetPeerMeshInfo(node core.PeerNode) *core.MeshInfo {
 	info := core.MeshInfo{
 		AdvertisedAddresses: make([]string, 0),
@@ -302,14 +266,14 @@ func (m *Service) GetPeerMeshInfo(node core.PeerNode) *core.MeshInfo {
 			RemoteAddress: conn.RemoteMultiaddr().String(),
 			LocalAddress:  conn.LocalMultiaddr().String(),
 			Direction:     conn.Stat().Direction.String(),
-			Security:      fmt.Sprintf("%s", conn.ConnState().Security),
+			Security:      string(conn.ConnState().Security),
 			Multiplexer:   conn.ConnState().Transport,
 			Kind:          ConnKind(conn),
 		}
 		streams := conn.GetStreams()
 		cd.StreamCount = len(streams)
 		for _, stream := range streams {
-			cd.Streams = append(cd.Streams, fmt.Sprintf("%s", stream.Protocol()))
+			cd.Streams = append(cd.Streams, string(stream.Protocol()))
 		}
 		info.Connections = append(info.Connections, cd)
 	}
@@ -341,7 +305,7 @@ func (m *Service) Disconnect() error {
 func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
 	mesh, err := api.NewClient(mc.Address, mc.Secret).Mesh("default")
 	if err != nil {
-		return nil, fmt.Errorf("could open mesh admin client. err:%v\n", err)
+		return nil, fmt.Errorf("could open mesh admin client err:%v", err)
 	}
 
 	// load our node key (or create a new one)
@@ -357,7 +321,7 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service,
 
 	err = mesh.Login(nodeID, mc.Secret)
 	if err != nil {
-		return nil, fmt.Errorf("could not login to mesh. err:%v\n", err)
+		return nil, fmt.Errorf("could not login to mesh err:%v", err)
 	}
 
 	// Retrieve the bootstrap address of our public relays

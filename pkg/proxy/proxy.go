@@ -36,15 +36,6 @@ const maxBody = 8 << 20 // 1 MiB
 
 const MeshModelPrefix = ""
 
-var proxyHandleURLS = []string{
-	// open ai
-	"/v1/chat/completions",
-	"/v1/responses",
-	"/v1/embeddings",
-	// Anthropic
-	"/v1/messages",
-}
-
 type RequestPeek struct {
 	Model string
 }
@@ -121,16 +112,21 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 			return
 		}
 
-		proxy := httputil.NewSingleHostReverseProxy(u)
-		orig := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			orig(req)
-			req.Host = u.Host
-			security.ScrubHeaders(req, security.DefaultAllowedHeaders)
-			if local.Token != "" {
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
-			}
+		proxy := &httputil.ReverseProxy{
+			// Do not include Director: func... here
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(u)
+
+				// pr.SetURL(u) // Use this if you need to handle the target URL scheme/host routing manually
+				pr.Out.URL.Scheme = "http"
+				pr.Out.Host = u.Host
+				security.ScrubHeaders(pr.Out, security.DefaultAllowedHeaders)
+				if local.Token != "" {
+					pr.Out.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
+				}
+			},
 		}
+
 		proxy.Transport = p.providerRT
 		proxy.ModifyResponse = rejectProviderRedirect
 		proxy.ServeHTTP(w, r)
@@ -154,18 +150,6 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 
 	log.Debugf(" -- Servicing via mesh node: %s\n", destNode)
 	p.mesh.ProxyToNode(*destNode, w, r)
-	return
-}
-
-func scrubProviderRequest(req *http.Request, token string) {
-	req.Header.Del("Authorization")
-	req.Header.Del("Proxy-Authorization")
-	req.Header.Del("Cookie")
-	req.Header.Del("X-Api-Key")
-	req.Header.Del("Origin")
-	if token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	}
 }
 
 func rejectProviderRedirect(resp *http.Response) error {
@@ -244,7 +228,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cid := atomic.AddUint64(&p.cid, 1)
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
 	security.SetHeaders(w)
 	p.mux.ServeHTTP(w, r)
@@ -258,7 +242,7 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (mesh:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
 	p.meshMux.ServeHTTP(w, r)
 }
@@ -274,9 +258,9 @@ func (p *Proxy) Serve(ctx context.Context) error {
 		}
 		return nil
 	})
-	//if err != nil {
-	//	return err
-	//}
+	if err != nil {
+		return err
+	}
 
 	err = p.mesh.Connect()
 	if err != nil {

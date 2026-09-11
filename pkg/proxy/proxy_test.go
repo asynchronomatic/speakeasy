@@ -9,74 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
-
-var testProviders = []config.Provider{
-	{
-		ID:        "test-provider-1",
-		Type:      "test",
-		BaseURL:   "http://test-1",
-		Token:     "12345",
-		Private:   false,
-		Discovery: "whitelist",
-		Models: []config.ModelConfig{
-			{
-				Model:   "test-model-0",
-				Private: false,
-				Capabilities: []string{
-					"embedding", "text",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-			{
-				Model:   "test-model-1",
-				Private: true,
-				Capabilities: []string{
-					"text", "image",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-		},
-	},
-	{
-		ID:        "test-provider-2",
-		Type:      "test",
-		BaseURL:   "http://test-2",
-		Token:     "5678",
-		Private:   false,
-		Discovery: "whitelist",
-		Models: []config.ModelConfig{
-			{
-				Model:   "test-model-0",
-				Private: false,
-				Capabilities: []string{
-					"embedding", "text",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-			{
-				Model:   "test-model-1",
-				Private: false,
-				Capabilities: []string{
-					"text", "image",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-		},
-	},
-}
 
 func statusCode(err error) int {
 	var je *jsonrpc.Error
@@ -130,5 +66,7 @@ func TestNewProxy(t *testing.T) {
 		}
 	}
 	assert.NotEqual(t, 0, retries)
+
+	// TODO: implement api requests to the proxy
 
 }

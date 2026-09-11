@@ -62,7 +62,7 @@ func (c *Client) Do(method, location string, in any, out any) error {
 
 	var bodyIn io.Reader
 
-	data := []byte("")
+	var data []byte
 	if in != nil {
 		data, err = json.Marshal(in)
 		if err != nil {

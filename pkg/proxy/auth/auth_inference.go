@@ -14,7 +14,7 @@ import (
 )
 
 var InferenceTokenPrefix = "se-"
-var InvalidInferenceToken = errors.New("invalid inference token")
+var ErrInvalidInferenceToken = errors.New("invalid inference token")
 var InferenceKeyLength = 8
 var InferenceSecretLength = 56
 
@@ -30,19 +30,19 @@ type InferenceAuth struct {
 
 func ParseInferenceToken(authToken string) (string, []byte, error) {
 	if !strings.HasPrefix(authToken, InferenceTokenPrefix) {
-		return "", nil, InvalidInferenceToken
+		return "", nil, ErrInvalidInferenceToken
 	}
 
 	parts := strings.Split(strings.TrimPrefix(authToken, InferenceTokenPrefix), "$")
 	if len(parts) != 2 {
-		return "", nil, InvalidInferenceToken
+		return "", nil, ErrInvalidInferenceToken
 	}
 
 	key := parts[0]
 
 	secret, err := base62.DecodeString(parts[1])
 	if err != nil {
-		return "", nil, InvalidInferenceToken
+		return "", nil, ErrInvalidInferenceToken
 	}
 
 	return key, secret, nil
