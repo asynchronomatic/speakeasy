@@ -129,32 +129,3 @@ func (p *Proxy) uiModelsHandler(rpc *jsonrpc.RPC) error {
 
 	return rpc.ReplyObject(&resp)
 }
-
-func (p *Proxy) debugSetHandler(rpc *jsonrpc.RPC) error {
-	req := struct {
-		DebugEnabled bool `json:"debugEnabled"`
-	}{}
-
-	if err := rpc.GetObject(&req); err != nil {
-		return err
-	}
-
-	if req.DebugEnabled {
-		log.Default.SetLevel(log.LogAll)
-	} else {
-		log.Default.SetLevel(log.LogNormal)
-	}
-
-	return rpc.ReplyObject(&req)
-
-}
-
-func (p *Proxy) debugGetHandler(rpc *jsonrpc.RPC) error {
-	req := struct {
-		DebugEnabled bool `json:"debugEnabled"`
-	}{
-		DebugEnabled: log.Default.GetLevel() == log.LogAll,
-	}
-
-	return rpc.ReplyObject(&req)
-}

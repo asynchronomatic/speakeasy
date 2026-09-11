@@ -367,9 +367,6 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))
-	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugGetHandler)))
-	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugSetHandler)))
-
 	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeGetHandler)))
 	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeSetHandler)))
 

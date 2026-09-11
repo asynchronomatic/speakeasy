@@ -99,8 +99,6 @@
     welcomeLocalNote: document.getElementById("welcome-local-note"),
     themeSelect: document.getElementById("theme-select"),
     themeError: document.getElementById("theme-error"),
-    debugToggle: document.getElementById("debug-toggle"),
-    debugError: document.getElementById("debug-error"),
     navAdmin: document.getElementById("nav-admin"),
     adminCount: document.getElementById("admin-count"),
     adminLocked: document.getElementById("admin-locked"),
@@ -183,29 +181,6 @@
       applyTheme(data.theme || data.Theme);
     } catch (_) {
       applyTheme(currentTheme());
-    }
-  }
-
-  function debugEnabledFrom(data) {
-    return !!(data && (data.debugEnabled || data.DebugEnabled));
-  }
-
-  async function loadDebug() {
-    if (!el.debugToggle) return;
-    const data = await getJSON("/api/mesh/debug");
-    el.debugToggle.checked = debugEnabledFrom(data);
-  }
-
-  async function saveDebug() {
-    if (!el.debugToggle) return;
-    const on = !!el.debugToggle.checked;
-    setErrorEl(el.debugError, "");
-    try {
-      const data = await sendJSON("/api/mesh/debug", "POST", { debugEnabled: on });
-      el.debugToggle.checked = debugEnabledFrom(data) || on;
-    } catch (err) {
-      el.debugToggle.checked = !on;
-      setErrorEl(el.debugError, err.message || String(err));
     }
   }
 
@@ -1291,13 +1266,7 @@
 
   async function renderSettings() {
     setErrorEl(el.providersError, "");
-    setErrorEl(el.debugError, "");
     setErrorEl(el.inferenceTokensError, "");
-    try {
-      await loadDebug();
-    } catch (err) {
-      setErrorEl(el.debugError, err.message || String(err));
-    }
     try {
       await loadInferenceTokens();
     } catch (err) {
@@ -2311,9 +2280,6 @@
   });
   if (el.themeSelect) {
     el.themeSelect.addEventListener("change", () => saveTheme(el.themeSelect.value));
-  }
-  if (el.debugToggle) {
-    el.debugToggle.addEventListener("change", () => saveDebug());
   }
   if (el.inferenceInsecure) {
     el.inferenceInsecure.addEventListener("change", () => saveInferenceInsecure());
