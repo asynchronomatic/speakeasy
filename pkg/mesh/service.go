@@ -284,6 +284,13 @@ func (m *Service) GetHost() host.Host {
 	return m.h
 }
 
+func (m *Service) SignalUpdate() {
+	m.discovery.postEvent(peerEvent{
+		PeerID: m.node.ID,
+		Status: PeerStatusUp,
+	})
+}
+
 // Connect this service to the mesh
 func (m *Service) Connect() error {
 	log.WithName("mesh").Infof("My PeerNode: %s\n", m.node)

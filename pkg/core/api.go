@@ -60,4 +60,6 @@ type MeshServiceProvider interface {
 	WithUpdateHandlerFunc(h UpdateHandlerFunc)
 
 	AdminAddress() string
+
+	SignalUpdate()
 }

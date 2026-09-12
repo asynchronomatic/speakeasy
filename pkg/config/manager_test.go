@@ -36,6 +36,7 @@ func TestNewManager(t *testing.T) {
 		assert.Equal(t, "updated-mesh", config.Mesh.Name)
 		return nil
 	})
+	assert.NoError(t, err)
 
 	err = cm.UpdateConfig(func(config *Config) error {
 		config.Mesh.Name = "new-mesh"
@@ -47,5 +48,6 @@ func TestNewManager(t *testing.T) {
 		assert.Equal(t, "updated-mesh", config.Mesh.Name)
 		return nil
 	})
+	assert.NoError(t, err)
 
 }

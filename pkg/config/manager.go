@@ -86,6 +86,9 @@ func (m *Manager) UpdateConfig(updateFunc func(config *Config) error) error {
 	newConfig := &Config{}
 	err := copier.Copy(newConfig, m.config)
 	assert.NoError(err, "could not copy config")
+	if err != nil {
+		return err
+	}
 
 	err = updateFunc(newConfig)
 	if err != nil {
@@ -105,6 +108,9 @@ func (m *Manager) ReadConfig(readOnly func(config *Config) error) error {
 	newConfig := &Config{}
 	err := copier.Copy(newConfig, m.config)
 	assert.NoError(err, "could not copy config")
+	if err != nil {
+		return err
+	}
 
 	// FIXME: make a copy of our config and throw away any changes
 	// also assert ig it was changed

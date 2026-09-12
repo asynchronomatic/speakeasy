@@ -247,6 +247,16 @@ func (d *DiscoveryManager) listenForPeerUpdates(ctx context.Context) {
 
 		select {
 		case evt := <-d.discoveryEvents:
+			if evt.PeerID == d.node.ID {
+				// force a refresh of parents
+				log.WithName("disc").Eventf("signaling update for self")
+				err = d.registration.SignalUpdate()
+				if err != nil {
+					log.Warnf("failed to signal update: %v", err)
+				}
+				continue
+			}
+
 			log.WithName("disc").Eventf("peer event %+v", evt)
 			d.lock.Lock()
 			knownPeer, ok := d.knownPeers[evt.PeerID]

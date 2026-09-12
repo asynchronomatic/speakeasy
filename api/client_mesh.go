@@ -74,13 +74,17 @@ type Registration struct {
 
 type RegisterNodeResponse = RegisterNodeRequest
 
-func (r *Registration) Refresh() (bool, uint64, error) {
+func (r *Registration) refresh(updated bool) (bool, uint64, error) {
 	if err := r.client.ensureSession(); err != nil {
 		return false, 0, err
 	}
 	req := RegisterNodeRequest{
 		Node:       r.node,
 		InstanceID: r.instanceID,
+	}
+
+	if updated {
+		req.LastUpdate = time.Now()
 	}
 
 	resp := RegisterNodeResponse{}
@@ -96,6 +100,15 @@ func (r *Registration) Refresh() (bool, uint64, error) {
 	}
 	r.instanceID = resp.InstanceID
 	return true, resp.LogicalTime, nil
+}
+
+func (r *Registration) Refresh() (bool, uint64, error) {
+	return r.refresh(false)
+}
+
+func (r *Registration) SignalUpdate() error {
+	_, _, err := r.refresh(true)
+	return err
 }
 
 // GetPeers returns a list of currently configured peers for our mesh

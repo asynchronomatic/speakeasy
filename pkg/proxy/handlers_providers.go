@@ -107,6 +107,7 @@ func (p *Proxy) providerAddHandler(rpc *jsonrpc.RPC) error {
 		return err
 	}
 
+	p.mesh.SignalUpdate()
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(providerWithoutToken(prov))
 }
@@ -139,6 +140,7 @@ func (p *Proxy) providerUpdateHandler(rpc *jsonrpc.RPC) error {
 	if err != nil {
 		return err
 	}
+	p.mesh.SignalUpdate()
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(providerWithoutToken(prov))
 }
@@ -164,6 +166,7 @@ func (p *Proxy) providerDeleteHandler(rpc *jsonrpc.RPC) error {
 	}
 	p.modelRouter.RemoveProvider(provider)
 
+	p.mesh.SignalUpdate()
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(map[string]string{"id": id})
 }
