@@ -18,7 +18,7 @@ run-admin:
 .PHONY: run-admin
 
 run-proxy:
-	go run -tags assert github.com/asynchronomatic/speakeasy/cmd/mesh proxy
+	go run -tags assert github.com/asynchronomatic/speakeasy/cmd/mesh proxy start
 .PHONY: run-proxy
 
 run-hybrid:

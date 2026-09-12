@@ -55,13 +55,15 @@ func newCommand() *cli.Command {
 		Usage:                 "Speakeasy mesh node: init, join, proxy, and admin",
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
-			{
-				Name:  "init",
-				Usage: "Interactive setup: write config.yaml, node.key, and relay.key",
-				Action: func(context.Context, *cli.Command) error {
-					return initializeNewInstall()
+			/*
+				{
+					Name:  "init",
+					Usage: "Interactive setup: write config.yaml, node.key, and relay.key",
+					Action: func(context.Context, *cli.Command) error {
+						return initializeNewInstall()
+					},
 				},
-			},
+			*/
 			{
 				Name:      "join",
 				Usage:     "Join a mesh from an invite URL, then start the proxy",
@@ -77,23 +79,68 @@ func newCommand() *cli.Command {
 			{
 				Name:  "proxy",
 				Usage: "Start the local OpenAI/Ollama proxy on this mesh",
-				Action: func(context.Context, *cli.Command) error {
-					return runProxy()
+				Commands: []*cli.Command{
+					{
+						Name:    "config",
+						Aliases: []string{"conf", "cfg"},
+						Usage:   "Update config options",
+						Commands: []*cli.Command{
+							{
+								Name:    "password",
+								Aliases: []string{"pw", "pass"},
+								Usage:   "Change the proxy UI password",
+								Action: func(context.Context, *cli.Command) error {
+									return proxyConfigSetPassword()
+								},
+							},
+						},
+					},
+					{
+						Name:      "join",
+						Usage:     "Join a mesh from an invite URL, then start the proxy",
+						ArgsUsage: "INVITE_URL",
+						Action: func(_ context.Context, cmd *cli.Command) error {
+							url, err := requireArg(cmd, "invite URL")
+							if err != nil {
+								return err
+							}
+							return runJoin(url)
+						},
+					},
+					{
+						Name:  "start",
+						Usage: "Starts the proxy server",
+						Action: func(context.Context, *cli.Command) error {
+							return proxyStart()
+						},
+					},
 				},
 			},
 			{
 				Name:  "admin",
 				Usage: "Run the admin HTTP API and libp2p relay",
-				Action: func(context.Context, *cli.Command) error {
-					return runAdminAndRelay()
+				Commands: []*cli.Command{
+					{
+						Name:  "start",
+						Usage: "Starts the admin server and relay",
+						Action: func(context.Context, *cli.Command) error {
+							return runAdminAndRelay()
+						},
+					},
 				},
 			},
 			{
 				Name:    "hybrid",
 				Aliases: []string{"standalone", "proxy+admin"},
 				Usage:   "Run admin, relay, and proxy on one machine",
-				Action: func(context.Context, *cli.Command) error {
-					return runHybrid()
+				Commands: []*cli.Command{
+					{
+						Name:  "start",
+						Usage: "Starts a hybrid server (admin and mesh)",
+						Action: func(context.Context, *cli.Command) error {
+							return runHybrid()
+						},
+					},
 				},
 			},
 			{

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/goccy/go-yaml"
+	"github.com/jinzhu/copier"
 
 	"github.com/asynchronomatic/speakeasy/pkg/config"
 )
@@ -28,21 +29,38 @@ func (m *ConfigManager) SetDefaultConfig(content string) error {
 func (m *ConfigManager) UpdateConfig(updateFunc func(config *config.Config) error) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	err := updateFunc(m.config)
+	newConfig := &config.Config{}
+	err := copier.Copy(newConfig, m.config)
 	if err != nil {
 		return err
 	}
+	err = updateFunc(newConfig)
+	if err != nil {
+		return err
+	}
+	m.config = newConfig
 	return nil
 }
 
 func (m *ConfigManager) ReadConfig(readOnly func(config *config.Config) error) error {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return readOnly(m.config)
+
+	newConfig := &config.Config{}
+	err := copier.Copy(newConfig, m.config)
+	if err != nil {
+		return err
+	}
+	return readOnly(newConfig)
 }
 
 func (m *ConfigManager) Config() *config.Config {
-	return m.config
+	newConfig := &config.Config{}
+	err := copier.Copy(newConfig, m.config)
+	if err != nil {
+		panic(err)
+	}
+	return newConfig
 }
 
 func MustConfigManager(content string) *ConfigManager {

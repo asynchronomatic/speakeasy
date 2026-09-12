@@ -134,6 +134,14 @@ func (s *Server) apiNodeRefresh(ctx *jsonrpc.RPC) error {
 			log.Errorf("token mismatch in refresh for %s", id)
 			return false
 		}
+
+		// Node requested update
+		if !req.LastUpdate.IsZero() {
+			log.Errorf("node %s requested update", id)
+			s.logicalTime++
+			ref.Node.LogicalTime++
+		}
+
 		ref.LastPing = time.Now()
 		return true
 	}
@@ -143,9 +151,9 @@ func (s *Server) apiNodeRefresh(ctx *jsonrpc.RPC) error {
 		InstanceID: req.InstanceID,
 	}
 	s.lock.Lock()
+	valid := updateNode(&req)
 	resp.LogicalTime = s.logicalTime
 	resp.LastUpdate = s.lastUpdate
-	valid := updateNode(&req)
 	s.lock.Unlock()
 
 	if !valid {

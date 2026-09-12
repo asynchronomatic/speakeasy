@@ -12,6 +12,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 var ErrAborted = errors.New("aborted")
@@ -32,7 +33,7 @@ func runJoin(inviteURL string) error {
 	if err := joinWithInvite(inviteURL); err != nil {
 		return err
 	}
-	return runProxy()
+	return proxyStart()
 }
 
 func existingJoinConfig() (bool, error) {
@@ -165,7 +166,12 @@ func ensureProxyPassword(cfg *config.Config) error {
 	if pw == "" {
 		return fmt.Errorf("proxy.password is required")
 	}
-	cfg.Proxy.Password = pw
+
+	encoded, err := security.PasswordHashAndEncode(pw)
+	if err != nil {
+		return err
+	}
+	cfg.Proxy.Password = encoded
 	return nil
 }
 
@@ -204,18 +210,3 @@ func promptProxyPassword() (string, error) {
 	}
 	return strings.TrimSpace(password), nil
 }
-
-/*
-func configFromInvite(resp *api.RedeemInviteResponse, existing *config.Config) *config.Config {
-	var cfg *config.Config
-	if existing != nil {
-		cp := *existing
-		cfg = &cp
-	} else {
-		cfg = defaultJoinConfig()
-	}
-	cfg.Mesh.Address = strings.TrimSpace(resp.MeshServer)
-	cfg.Mesh.Secret = resp.MeshSecret
-	cfg.Mesh.MeshId = resp.MeshId
-	return cfg
-}*/

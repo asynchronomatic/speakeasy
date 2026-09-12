@@ -30,6 +30,10 @@ func (t *MeshNode) Disconnect() error {
 	return t.orchestrator.Disconnect(t)
 }
 
+func (t *MeshNode) SignalUpdate() {
+	t.orchestrator.SignalUpdate(t)
+}
+
 func (t *MeshNode) ClientForPeer(dest core.PeerNode, longLived bool) jsonrpc.Doer {
 	return t.orchestrator.ClientForPeer(dest, longLived)
 }

@@ -44,6 +44,21 @@ func (t *MeshOrchestrator) Disconnect(mn *MeshNode) error {
 	return nil
 }
 
+func (t *MeshOrchestrator) SignalUpdate(mn *MeshNode) {
+	t.lock.Lock()
+	_, ok := t.nodes[mn.Node().ID]
+	updateNodes := maps.Clone(t.nodes)
+	t.lock.Unlock()
+	if !ok {
+		log.WithName("orch").Warnf("no node found for %s", mn.Node().ID)
+		return
+	}
+
+	for _, un := range updateNodes {
+		un.onNodeConnected(mn.Node())
+	}
+}
+
 func (t *MeshOrchestrator) ClientForPeer(dest core.PeerNode, longLived bool) jsonrpc.Doer {
 	t.lock.Lock()
 	node, ok := t.nodes[dest.ID]

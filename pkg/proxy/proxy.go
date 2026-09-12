@@ -200,7 +200,7 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	}
 
 	log.WithName("proxy").Eventf("discovered peer models %s: %+v", peer, slices.Collect(maps.Keys(models)))
-	p.modelRouter.AddPeerModels(peer, models)
+	p.modelRouter.UpdatePeerModels(peer, models)
 	return nil
 }
 
@@ -280,10 +280,11 @@ func (p *Proxy) Serve(ctx context.Context) error {
 
 	go func() {
 		err := svr.ListenAndServe()
-		if err != nil && errors.Is(err, http.ErrServerClosed) {
-			log.WithName("proxy").Eventf("proxy Service Failed: %s", err)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.WithName("proxy").Panicf("proxy Service Failed: %s", err)
 		}
-		log.WithName("proxy").Eventf("Proxy Service Exited")
+		log.WithName("proxy").Errorf("Proxy Service Exited")
+
 	}()
 
 	proxyLink, err := autoip.OutboundIP()
@@ -306,24 +307,6 @@ func (p *Proxy) WithAdminController(admin *api.AdminClient) {
 	log.WithName("proxy").Warnf("Enabled Admin Controller (Admin Token Configured)")
 	p.admin = admin
 }
-
-/*
-func (p *Proxy) WithAdminToken(token string) {
-	assert.NotNil(token)
-	p.auth = auth.NewUserAuth()
-	p.auth.WithUser(jsonrpc.AdminUser, jsonrpc.AdminGroup, token)
-	log.WithName("proxy").Warnf("Enabled UI Authentication")
-}
-
-func (p *Proxy) WithInferenceTokens(insecure bool, tokens []config.InferenceToken) {
-	p.inferenceAuth.SetInsecure(insecure)
-	for _, t := range tokens {
-		err := p.inferenceAuth.AddToken(t.Token)
-		if err != nil {
-			log.Warnf("Found invalid inference token: %s", err)
-		}
-	}
-}*/
 
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network

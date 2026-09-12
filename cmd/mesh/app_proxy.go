@@ -9,9 +9,10 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
-func runProxy() error {
+func proxyStart() error {
 	var service core.MeshServiceProvider
 
 	cm := config.NewManager(config.DefaultConfigPath)
@@ -48,6 +49,19 @@ func runProxy() error {
 	p.WithAdminController(admin)
 
 	return core.RunInterruptible(p)
+}
+
+func proxyConfigSetPassword() error {
+	pw, err := promptProxyPassword()
+	if err != nil {
+		return err
+	}
+
+	cm := config.NewManager(config.DefaultConfigPath)
+	return cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.Password = security.MustPasswordHashAndEncodeBase62(pw)
+		return nil
+	})
 }
 
 func adminControllerAddr(config *config.Config) (addr, secret string, ok bool) {

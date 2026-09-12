@@ -11,6 +11,7 @@ type LocalRoute struct {
 	Token   string
 }
 type ModelProvider struct {
+	ID       string
 	Private  bool
 	Provider string
 	BaseURL  string
@@ -93,7 +94,6 @@ func (r *ModelRoute) AddPeer(peer core.PeerNode) {
 
 func (r *ModelRoute) RemovePeer(peer core.PeerNode) {
 	delete(r.peers, peer.ID)
-
 }
 
 func (r *ModelRoute) IsAvailable() bool {
