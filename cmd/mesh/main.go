@@ -78,14 +78,14 @@ func newCommand() *cli.Command {
 				Name:  "proxy",
 				Usage: "Start the local OpenAI/Ollama proxy on this mesh",
 				Action: func(context.Context, *cli.Command) error {
-					return runProxy(config.MustLoadConfig())
+					return runProxy()
 				},
 			},
 			{
 				Name:  "admin",
 				Usage: "Run the admin HTTP API and libp2p relay",
 				Action: func(context.Context, *cli.Command) error {
-					return runAdminAndRelay(config.MustLoadConfig())
+					return runAdminAndRelay()
 				},
 			},
 			{
@@ -93,7 +93,7 @@ func newCommand() *cli.Command {
 				Aliases: []string{"standalone", "proxy+admin"},
 				Usage:   "Run admin, relay, and proxy on one machine",
 				Action: func(context.Context, *cli.Command) error {
-					return runHybrid(config.MustLoadConfig())
+					return runHybrid()
 				},
 			},
 			{

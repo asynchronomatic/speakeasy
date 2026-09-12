@@ -7,28 +7,46 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
-	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy"
 )
 
-func runProxy(cfg *config.Config) error {
-	if cfg.Proxy.Password == "" {
-		return fmt.Errorf("proxy password is required")
-	}
-
-	service, err := mesh.NewService(&cfg.Mesh, nil)
-	if err != nil {
-		log.Fatalf("Could not initialize mesh err:%v\n", err)
-	}
+func runProxy() error {
+	var service core.MeshServiceProvider
 
 	cm := config.NewManager(config.DefaultConfigPath)
+	if err := cm.EnsureLoaded(); err != nil {
+		return err
+	}
+
+	// HACK:
+	var admin *api.AdminClient
+
+	err := cm.ReadConfig(func(cfg *config.Config) error {
+		var err error
+		if cfg.Proxy.Password == "" {
+			return fmt.Errorf("proxy password is required")
+		}
+
+		if service, err = mesh.NewService(&cfg.Mesh, nil); err != nil {
+			return fmt.Errorf("could not initialize mesh: %w", err)
+		}
+
+		addr, secret, ok := adminControllerAddr(cfg)
+		if !ok {
+			return nil
+		}
+
+		admin = api.NewClient(addr, secret).Admin()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 
 	p, _ := proxy.NewProxy(service, cm)
-	//p.WithAdminToken(config.Proxy.Password)
-	//p.WithInferenceTokens(config.Proxy.InferenceTokens.Insecure, config.Proxy.InferenceTokens.Tokens)
+	p.WithAdminController(admin)
 
-	attachAdminController(p, cfg) // FIXME, roll into proxy startup
 	return core.RunInterruptible(p)
 }
 
@@ -47,15 +65,7 @@ func adminControllerAddr(config *config.Config) (addr, secret string, ok bool) {
 	return addr, secret, true
 }
 
-func attachAdminController(p *proxy.Proxy, config *config.Config) {
-	addr, secret, ok := adminControllerAddr(config)
-	if !ok {
-		return
-	}
-	p.WithAdminController(api.NewClient(addr, secret).Admin())
-}
-
-func runHybrid(config *config.Config) error {
+func runHybrid() error {
 	return fmt.Errorf("hybrid mode not implemented")
 }
 

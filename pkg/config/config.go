@@ -4,15 +4,11 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/goccy/go-yaml"
-
-	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
 var DefaultRelayPort = 4001
 var DefaultAdminPort = 4002
-var DefaultProxyListen = "127.0.0.1:4080"
+var DefaultProxyListen = ":4080"
 
 const DefaultTheme = "deco"
 
@@ -115,51 +111,4 @@ func ApplyConfigDefaults(config *Config) {
 		config.Mesh.Name, _ = os.Hostname()
 	}
 	config.Proxy.Theme = NormalizeTheme(config.Proxy.Theme)
-}
-
-func LoadConfigFile() (*Config, error) {
-	config := &Config{}
-	data, err := os.ReadFile("config.yaml")
-	if err != nil {
-		return nil, err
-	}
-	if err := yaml.Unmarshal(data, config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-func SaveConfig(config *Config) error {
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile("config.yaml", data, 0o600)
-}
-
-func LoadConfig() (*Config, error) {
-	config, err := LoadConfigFile()
-	if err != nil {
-		return nil, err
-	}
-	ApplyConfigDefaults(config)
-	return config, nil
-}
-
-func MustLoadConfig() *Config {
-	config, err := LoadConfig()
-	if err != nil {
-		log.Fatalf("Could not load config.yaml  (Err:%v)\n", err)
-	}
-
-	if config.Mesh.Address == "" {
-		log.Fatalf("Mesh.Address must be set in config.yaml")
-	}
-
-	if config.Debug {
-		log.Default.SetLevel(log.LogAll)
-	} else {
-		log.Default.SetLevel(log.LogNormal)
-	}
-	return config
 }

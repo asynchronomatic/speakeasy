@@ -4,11 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadSaveConfigProviders(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	SetConfigPath(dir)
 
 	src := []byte(`proxy:
   listen: ":9"
@@ -28,43 +31,50 @@ providers:
 		t.Fatal(err)
 	}
 
-	cfg, err := LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Listen != ":9" || cfg.Mesh.Name != "n1" {
-		t.Fatalf("loaded %+v", cfg)
-	}
-	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" || cfg.Providers[0].BaseURL != "http://127.0.0.1:11434" {
-		t.Fatalf("providers %+v", cfg.Providers)
-	}
+	cm := NewManager(DefaultConfigPath)
 
-	cfg.Proxy.AllowPrivateBackends = true
-	cfg.Providers = append(cfg.Providers, Provider{
-		ID:        "cloud",
-		Type:      "openai",
-		BaseURL:   "https://api.example",
-		Token:     "tok",
-		Private:   true,
-		Discovery: "whitelist",
+	err := cm.EnsureLoaded()
+	require.NoError(t, err)
+
+	err = cm.UpdateConfig(func(cfg *Config) error {
+		if cfg.Proxy.Listen != ":9" || cfg.Mesh.Name != "n1" {
+			t.Fatalf("loaded %+v", cfg)
+		}
+		if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" || cfg.Providers[0].BaseURL != "http://127.0.0.1:11434" {
+			t.Fatalf("providers %+v", cfg.Providers)
+		}
+
+		cfg.Proxy.AllowPrivateBackends = true
+		cfg.Providers = append(cfg.Providers, Provider{
+			ID:        "cloud",
+			Type:      "openai",
+			BaseURL:   "https://api.example",
+			Token:     "tok",
+			Private:   true,
+			Discovery: "whitelist",
+		})
+		return nil
 	})
-	if err := SaveConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	again, err := LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Proxy.Listen != ":9" || again.Admin.Secret != "s" || again.Mesh.Address != "http://example" {
-		t.Fatalf("other fields changed: %+v", again)
-	}
-	if !again.Proxy.AllowPrivateBackends {
-		t.Fatal("allow_private_backends not saved")
-	}
-	if len(again.Providers) != 2 || again.Providers[1].ID != "cloud" || again.Providers[1].Token != "tok" {
-		t.Fatalf("saved providers %+v", again.Providers)
-	}
+	// full reload
+	cm = NewManager(DefaultConfigPath)
+	err = cm.EnsureLoaded()
+	require.NoError(t, err)
+	cm.ReadConfig(func(cfg *Config) error {
+		if cfg.Proxy.Listen != ":9" || cfg.Admin.Secret != "s" || cfg.Mesh.Address != "http://example" {
+			t.Fatalf("other fields changed: %+v", cfg)
+		}
+		if !cfg.Proxy.AllowPrivateBackends {
+			t.Fatal("allow_private_backends not saved")
+		}
+		if len(cfg.Providers) != 2 || cfg.Providers[1].ID != "cloud" || cfg.Providers[1].Token != "tok" {
+			t.Fatalf("saved providers %+v", cfg.Providers)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
 }
 
 func TestNormalizeTheme(t *testing.T) {
@@ -87,6 +97,8 @@ func TestNormalizeTheme(t *testing.T) {
 func TestLoadConfigDefaultsTheme(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	SetConfigPath(dir)
+
 	src := []byte(`proxy:
   listen: ":9"
 mesh:
@@ -95,23 +107,23 @@ mesh:
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), src, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Theme != DefaultTheme {
-		t.Fatalf("default theme %q want %q", cfg.Proxy.Theme, DefaultTheme)
-	}
 
-	cfg.Proxy.Theme = "clean"
-	if err := SaveConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
-	again, err := LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Proxy.Theme != "clean" || again.Proxy.Listen != ":9" {
-		t.Fatalf("saved theme %+v", again.Proxy)
-	}
+	cm := NewManager(DefaultConfigPath)
+	err := cm.UpdateConfig(func(cfg *Config) error {
+		if cfg.Proxy.Theme != DefaultTheme {
+			t.Fatalf("default theme %q want %q", cfg.Proxy.Theme, DefaultTheme)
+		}
+		cfg.Proxy.Theme = "clean"
+		return nil
+	})
+	require.NoError(t, err)
+
+	cm = NewManager(DefaultConfigPath)
+	err = cm.ReadConfig(func(cfg *Config) error {
+		if cfg.Proxy.Theme != "clean" || cfg.Proxy.Listen != ":9" {
+			t.Fatalf("saved theme %+v", cfg.Proxy)
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }

@@ -21,50 +21,45 @@ func runReset(all bool) error {
 }
 
 func resetMembership() error {
-	configExists := fileExists(defaultConfigPath)
-	keyExists := fileExists(defaultNodeKeyPath)
+	keyExists := fileExists(config.DefaultNodePath)
 
-	var cfg *config.Config
-	if configExists {
-		var err error
-		cfg, err = config.LoadConfigFile()
+	cm := config.NewManager(config.DefaultConfigPath)
+	if err := cm.EnsureLoaded(); err == nil {
+		err = cm.UpdateConfig(func(cfg *config.Config) error {
+			if !hasMembership(cfg) && !keyExists {
+				fmt.Println("Nothing to reset: no mesh membership settings or node.key in this directory.")
+				return nil
+			}
+
+			ok, err := confirmReset("Detach this node from its mesh?", membershipResetDescription(cfg, keyExists))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Println("Aborted.")
+				return fmt.Errorf("aborted")
+			}
+
+			if cfg != nil {
+				clearMembership(cfg)
+				log.Infof("cleared membership settings in %s\n", config.DefaultConfigPath)
+			}
+			return nil
+		})
 		if err != nil {
-			return fmt.Errorf("load %s: %w", defaultConfigPath, err)
+			return err
 		}
 	}
 
-	if !hasMembership(cfg) && !keyExists {
-		fmt.Println("Nothing to reset: no mesh membership settings or node.key in this directory.")
-		return nil
-	}
-
-	ok, err := confirmReset("Detach this node from its mesh?", membershipResetDescription(cfg, keyExists))
-	if err != nil {
-		return err
-	}
-	if !ok {
-		fmt.Println("Aborted.")
-		return nil
-	}
-
-	if cfg != nil {
-		clearMembership(cfg)
-		if err := config.SaveConfig(cfg); err != nil {
-			return fmt.Errorf("write %s: %w", defaultConfigPath, err)
-		}
-		log.Infof("cleared membership settings in %s\n", defaultConfigPath)
-	}
-	if err := removeFile(defaultNodeKeyPath); err != nil {
+	if err := removeFile(config.DefaultNodePath); err != nil {
 		return err
 	}
 
 	fmt.Println()
 	fmt.Println("Reset complete.")
-	if cfg != nil {
-		fmt.Printf("  cleared:  admin.address, admin.secret, mesh.address, mesh.mesh_id in %s\n", defaultConfigPath)
-	}
+	fmt.Printf("  cleared:  admin.address, admin.secret, mesh.address, mesh.mesh_id in %s\n", config.DefaultConfigPath)
 	if keyExists {
-		fmt.Printf("  deleted:  %s\n", defaultNodeKeyPath)
+		fmt.Printf("  deleted:  %s\n", config.DefaultNodePath)
 	}
 	fmt.Println()
 	fmt.Println("Next:")
@@ -73,8 +68,8 @@ func resetMembership() error {
 }
 
 func resetAll() error {
-	configExists := fileExists(defaultConfigPath)
-	keyExists := fileExists(defaultNodeKeyPath)
+	configExists := fileExists(config.DefaultConfigPath)
+	keyExists := fileExists(config.DefaultNodePath)
 	if !configExists && !keyExists {
 		fmt.Println("Nothing to reset: config.yaml and node.key are not in this directory.")
 		return nil
@@ -89,20 +84,20 @@ func resetAll() error {
 		return nil
 	}
 
-	if err := removeFile(defaultConfigPath); err != nil {
+	if err := removeFile(config.DefaultConfigPath); err != nil {
 		return err
 	}
-	if err := removeFile(defaultNodeKeyPath); err != nil {
+	if err := removeFile(config.DefaultNodePath); err != nil {
 		return err
 	}
 
 	fmt.Println()
 	fmt.Println("Reset complete.")
 	if configExists {
-		fmt.Printf("  deleted:  %s\n", defaultConfigPath)
+		fmt.Printf("  deleted:  %s\n", config.DefaultConfigPath)
 	}
 	if keyExists {
-		fmt.Printf("  deleted:  %s\n", defaultNodeKeyPath)
+		fmt.Printf("  deleted:  %s\n", config.DefaultNodePath)
 	}
 	fmt.Println()
 	fmt.Println("Next:")
@@ -140,9 +135,9 @@ func membershipResetDescription(cfg *config.Config, keyExists bool) string {
 	}
 	b.WriteString("\nWill delete:\n")
 	if keyExists {
-		fmt.Fprintf(&b, "  %s  (this node's libp2p identity; a new one is created on the next join)\n", defaultNodeKeyPath)
+		fmt.Fprintf(&b, "  %s  (this node's libp2p identity; a new one is created on the next join)\n", config.DefaultNodePath)
 	} else {
-		fmt.Fprintf(&b, "  %s  (not present)\n", defaultNodeKeyPath)
+		fmt.Fprintf(&b, "  %s  (not present)\n", config.DefaultNodePath)
 	}
 	b.WriteString("\nYou will need to run mesh join <invite-url> to rejoin.")
 	return b.String()
@@ -152,14 +147,14 @@ func allResetDescription(configExists, keyExists bool) string {
 	var b strings.Builder
 	b.WriteString("This deletes the local install files. relay.key is kept.\n\nWill delete:\n")
 	if configExists {
-		fmt.Fprintf(&b, "  %s  (proxy, providers, admin, and mesh settings)\n", defaultConfigPath)
+		fmt.Fprintf(&b, "  %s  (proxy, providers, admin, and mesh settings)\n", config.DefaultConfigPath)
 	} else {
-		fmt.Fprintf(&b, "  %s  (not present)\n", defaultConfigPath)
+		fmt.Fprintf(&b, "  %s  (not present)\n", config.DefaultConfigPath)
 	}
 	if keyExists {
-		fmt.Fprintf(&b, "  %s  (this node's libp2p identity)\n", defaultNodeKeyPath)
+		fmt.Fprintf(&b, "  %s  (this node's libp2p identity)\n", config.DefaultNodePath)
 	} else {
-		fmt.Fprintf(&b, "  %s  (not present)\n", defaultNodeKeyPath)
+		fmt.Fprintf(&b, "  %s  (not present)\n", config.DefaultNodePath)
 	}
 	b.WriteString("\nYou will need to run mesh init and mesh join to start over.")
 	return b.String()

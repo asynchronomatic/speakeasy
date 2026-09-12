@@ -300,6 +300,9 @@ func (p *Proxy) Serve(ctx context.Context) error {
 }
 
 func (p *Proxy) WithAdminController(admin *api.AdminClient) {
+	if admin == nil {
+		return
+	}
 	log.WithName("proxy").Warnf("Enabled Admin Controller (Admin Token Configured)")
 	p.admin = admin
 }

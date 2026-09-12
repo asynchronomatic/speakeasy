@@ -19,9 +19,9 @@ import (
 // Install defaults. Change these to adjust what `mesh init` offers (and writes
 // if the user keeps the pre-filled value).
 var (
-	defaultNodeKeyPath  = "node.key"
-	defaultRelayKeyPath = "relay.key"
-	defaultConfigPath   = "config.yaml"
+	//defaultNodeKeyPath  = "node.key"
+	//defaultRelayKeyPath = "relay.key"
+	//defaultConfigPath   = config.DefaultConfigPath
 
 	defaultProxyListen    = config.DefaultProxyListen
 	defaultOllamaVersion  = "0.33.0"
@@ -96,9 +96,9 @@ func validatePort(s string) error {
 
 func collectInstallSettings() (installSettings, error) {
 	s := installSettings{
-		NodeKeyPath:    defaultNodeKeyPath,
-		RelayKeyPath:   defaultRelayKeyPath,
-		ConfigPath:     defaultConfigPath,
+		NodeKeyPath:    config.DefaultNodePath,
+		RelayKeyPath:   config.DefaultRelayPath,
+		ConfigPath:     config.DefaultConfigPath,
 		ProxyListen:    defaultProxyListen,
 		OllamaVersion:  defaultOllamaVersion,
 		MeshName:       defaultMeshName,
@@ -316,7 +316,7 @@ providers:
 
 func initializeNewInstall() error {
 	existing := make([]string, 0, 3)
-	for _, path := range []string{defaultNodeKeyPath, defaultRelayKeyPath, defaultConfigPath} {
+	for _, path := range []string{config.DefaultNodePath, config.DefaultRelayPath, config.DefaultConfigPath} {
 		if fileExists(path) {
 			existing = append(existing, path)
 		}
