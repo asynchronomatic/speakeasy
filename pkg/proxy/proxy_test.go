@@ -14,69 +14,6 @@ import (
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
-var testProviders = []core.Provider{
-	{
-		ID:        "test-provider-1",
-		Type:      "test",
-		BaseURL:   "http://test-1",
-		Token:     "12345",
-		Private:   false,
-		Discovery: "whitelist",
-		Models: []core.ModelConfig{
-			{
-				Model:   "test-model-0",
-				Private: false,
-				Capabilities: []string{
-					"embedding", "text",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-			{
-				Model:   "test-model-1",
-				Private: true,
-				Capabilities: []string{
-					"text", "image",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-		},
-	},
-	{
-		ID:        "test-provider-2",
-		Type:      "test",
-		BaseURL:   "http://test-2",
-		Token:     "5678",
-		Private:   false,
-		Discovery: "whitelist",
-		Models: []core.ModelConfig{
-			{
-				Model:   "test-model-0",
-				Private: false,
-				Capabilities: []string{
-					"embedding", "text",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-			{
-				Model:   "test-model-1",
-				Private: false,
-				Capabilities: []string{
-					"text", "image",
-				},
-				Tools: []string{
-					"web_search",
-				},
-			},
-		},
-	},
-}
-
 func statusCode(err error) int {
 	var je *jsonrpc.Error
 	if errors.As(err, &je) {
@@ -91,15 +28,13 @@ func TestNewProxy(t *testing.T) {
 	testMeshLeft := orch.NewMeshNode("000001", "left")
 	testMeshRight := orch.NewMeshNode("000002", "right")
 
-	proxyLeft, err := NewProxy(testMeshLeft, ":0", nil, true)
+	proxyLeft, err := NewProxy(testMeshLeft, testable.MustConfigManager(testDefaultConfigYAML))
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyLeft.WithAdminToken(ProxyLoginSecret)
 
-	proxyRight, err := NewProxy(testMeshRight, ":0", testProviders, true)
+	proxyRight, err := NewProxy(testMeshRight, testable.MustConfigManager(testDefaultConfigYAML))
 	assert.Nil(t, err)
 	assert.NotNil(t, proxyLeft)
-	proxyRight.WithAdminToken(ProxyLoginSecret)
 
 	go func() {
 		_ = core.RunInterruptibleContext(context.Background(), proxyLeft, proxyRight)
@@ -131,5 +66,7 @@ func TestNewProxy(t *testing.T) {
 		}
 	}
 	assert.NotEqual(t, 0, retries)
+
+	// TODO: implement api requests to the proxy
 
 }

@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 func TestInferenceTokensListEmpty(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	var listed inferenceTokenList
 	err := doProxyJSON(t, p, http.MethodGet, "/api/proxy/inference/tokens", nil, &listed)
@@ -24,8 +24,8 @@ func TestInferenceTokensListEmpty(t *testing.T) {
 }
 
 func TestInferenceTokenCreateListDelete(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	// create a token
 	var created inferenceToken
@@ -36,8 +36,7 @@ func TestInferenceTokenCreateListDelete(t *testing.T) {
 	assert.Equal(t, "ci", created.Name)
 	assert.WithinDuration(t, time.Now().UTC(), created.CreatedAt, time.Minute)
 
-	cfg, err := core.LoadConfigFile()
-	require.NoError(t, err)
+	cfg := cm.Config()
 	require.Len(t, cfg.Proxy.InferenceTokens.Tokens, 1)
 	stored := cfg.Proxy.InferenceTokens.Tokens[0]
 	assert.Equal(t, "ci", stored.Name)
@@ -63,8 +62,7 @@ func TestInferenceTokenCreateListDelete(t *testing.T) {
 	err = doProxyJSON(t, p, http.MethodDelete, "/api/proxy/inference/tokens/"+listed.Tokens[0].Token, nil, nil)
 	assert.NoError(t, err)
 
-	cfg, err = core.LoadConfigFile()
-	require.NoError(t, err)
+	cfg = cm.Config()
 	assert.Empty(t, cfg.Proxy.InferenceTokens.Tokens)
 
 	err = doProxyJSON(t, p, http.MethodGet, "/api/proxy/inference/tokens", nil, &listed)
@@ -81,8 +79,9 @@ func TestInferenceTokenCreateListDelete(t *testing.T) {
 }
 
 func TestInferenceTokenCreateRequiresName(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	err := doProxyJSON(t, p, http.MethodPost, "/api/proxy/inference/tokens", inferenceTokenCreateRequest{
 		Token: &inferenceToken{},
 	}, nil)
@@ -90,8 +89,9 @@ func TestInferenceTokenCreateRequiresName(t *testing.T) {
 }
 
 func TestInferenceTokenCreateDuplicateName(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	err := doProxyJSON(t, p, http.MethodPost, "/api/proxy/inference/tokens", inferenceTokenCreateRequest{
 		Token: &inferenceToken{Name: "ci"},
 	}, nil)
@@ -104,8 +104,8 @@ func TestInferenceTokenCreateDuplicateName(t *testing.T) {
 }
 
 func TestInferenceTokenToggleInsecure(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	var listed inferenceTokenList
 	err := doProxyJSON(t, p, http.MethodPost, "/api/proxy/inference/tokens", inferenceTokenCreateRequest{
@@ -114,8 +114,7 @@ func TestInferenceTokenToggleInsecure(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, listed.Insecure)
 
-	cfg, err := core.LoadConfigFile()
-	require.NoError(t, err)
+	cfg := cm.Config()
 	assert.True(t, cfg.Proxy.InferenceTokens.Insecure)
 	assert.Empty(t, cfg.Proxy.InferenceTokens.Tokens)
 
@@ -129,15 +128,15 @@ func TestInferenceTokenToggleInsecure(t *testing.T) {
 	}, nil)
 	assert.NoError(t, err)
 
-	cfg, err = core.LoadConfigFile()
-	require.NoError(t, err)
+	cfg = cm.Config()
 	assert.True(t, cfg.Proxy.InferenceTokens.Insecure)
 	require.Len(t, cfg.Proxy.InferenceTokens.Tokens, 1)
 }
 
 func TestInferenceTokenDeleteMissing(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	err := doProxyJSON(t, p, http.MethodDelete, "/api/proxy/inference/tokens/nope", nil, nil)
-	assert.Equal(t, http.StatusNotFound, statusCode(err))
+	assert.Equalf(t, http.StatusNotFound, statusCode(err), err.Error())
 }

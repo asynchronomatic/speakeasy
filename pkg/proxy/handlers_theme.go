@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
 
@@ -13,13 +13,16 @@ type themeResponse struct {
 }
 
 func (p *Proxy) themeGetHandler(rpc *jsonrpc.RPC) error {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	cfg, err := core.LoadConfigFile()
+	var resp themeResponse
+
+	err := p.cm.ReadConfig(func(config *config.Config) error {
+		resp = themeResponse{Theme: config.Proxy.Theme}
+		return nil
+	})
 	if err != nil {
-		return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
+		return err
 	}
-	return rpc.ReplyObject(&themeResponse{Theme: core.NormalizeTheme(cfg.Proxy.Theme)})
+	return rpc.ReplyObject(&resp)
 }
 
 func (p *Proxy) themeSetHandler(rpc *jsonrpc.RPC) error {
@@ -28,20 +31,19 @@ func (p *Proxy) themeSetHandler(rpc *jsonrpc.RPC) error {
 		return err
 	}
 	raw := strings.ToLower(strings.TrimSpace(req.Theme))
-	theme := core.NormalizeTheme(raw)
+	theme := config.NormalizeTheme(raw)
 	if raw != "" && theme != raw {
 		return jsonrpc.NewError(http.StatusBadRequest, "invalid theme")
 	}
 
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	cfg, err := core.LoadConfigFile()
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.Theme = theme
+		return nil
+	})
 	if err != nil {
-		return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
+		return err
 	}
-	cfg.Proxy.Theme = theme
-	if err := core.SaveConfig(cfg); err != nil {
-		return jsonrpc.NewError(http.StatusInternalServerError, err.Error())
-	}
+
+	p.notifier.Broadcast()
 	return rpc.ReplyObject(&themeResponse{Theme: theme})
 }

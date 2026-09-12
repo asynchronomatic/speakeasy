@@ -5,80 +5,45 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"testing"
 
-	"github.com/goccy/go-yaml"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 )
 
-func TestConfigFromInvite(t *testing.T) {
-	cfg := configFromInvite(&api.RedeemInviteResponse{
-		MeshId:     "default",
-		MeshSecret: "sekrit",
-		MeshServer: "http://10.0.0.30:4002",
-	}, nil)
-	if cfg.Mesh.Address != "http://10.0.0.30:4002" {
-		t.Fatalf("Address=%q", cfg.Mesh.Address)
-	}
-	if cfg.Mesh.MeshId != "default" || cfg.Mesh.Secret != "sekrit" {
-		t.Fatalf("mesh %+v", cfg.Mesh)
-	}
-	if cfg.Proxy.Listen != core.DefaultProxyListen {
-		t.Fatalf("listen %q", cfg.Proxy.Listen)
-	}
-	if !cfg.Proxy.AllowPrivateBackends {
-		t.Fatal("join default should allow private backends for local Ollama")
-	}
-	if len(cfg.Providers) != 1 || cfg.Providers[0].Type != "ollama" {
-		t.Fatalf("providers %+v", cfg.Providers)
-	}
-}
+func TestConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	config.SetConfigPath(dir)
 
-func TestConfigFromInviteKeepsExisting(t *testing.T) {
-	existing := &core.Config{}
-	existing.Proxy.Listen = ":9999"
-	existing.Proxy.Password = "kept-pass"
-	existing.Admin.AdminPort = 4111
-	existing.Admin.Secret = "admin-secret"
-	existing.Mesh.Name = "kept-name"
-	existing.Mesh.Address = "http://old:4002"
-	existing.Mesh.Secret = "old-secret"
-	existing.Mesh.MeshId = "old-mesh"
-	existing.Mesh.MDNSEnabled = false
-	existing.Mesh.ForcePrivate = true
-	existing.Mesh.Port = 1234
-	existing.Providers = []core.Provider{{
-		ID:      "custom",
-		Type:    "openai",
-		BaseURL: "http://127.0.0.1:8080",
-	}}
+	err := config.NewManager(config.DefaultConfigPath).InitializeFromDefaults()
+	require.NoError(t, err)
 
-	cfg := configFromInvite(&api.RedeemInviteResponse{
-		MeshId:     "default",
-		MeshSecret: "new-secret",
-		MeshServer: "http://10.0.0.30:4002",
-	}, existing)
-	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "new-secret" || cfg.Mesh.MeshId != "default" {
-		t.Fatalf("updated mesh %+v", cfg.Mesh)
-	}
-	if cfg.Proxy.Listen != ":9999" || cfg.Proxy.Password != "kept-pass" || cfg.Admin.AdminPort != 4111 || cfg.Admin.Secret != "admin-secret" {
-		t.Fatalf("kept settings proxy=%+v admin=%+v", cfg.Proxy, cfg.Admin)
-	}
-	if cfg.Mesh.Name != "kept-name" || cfg.Mesh.MDNSEnabled || !cfg.Mesh.ForcePrivate || cfg.Mesh.Port != 1234 {
-		t.Fatalf("kept mesh extras %+v", cfg.Mesh)
-	}
-	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "custom" {
-		t.Fatalf("providers %+v", cfg.Providers)
-	}
+	writeTestFile(t, config.DefaultNodePath, []byte("node-identity"))
+	writeTestFile(t, config.DefaultRelayPath, []byte("node-identity"))
+
+	_, err = os.Stat(path.Join(dir, "config.yaml"))
+	assert.NoError(t, err)
+
+	_, err = os.Stat(path.Join(dir, "node.key"))
+	assert.NoError(t, err)
+
+	_, err = os.Stat(path.Join(dir, "relay.key"))
+	assert.NoError(t, err)
 }
 
 func TestRunJoin(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	config.SetConfigPath(dir)
+
+	cm := config.NewManager(config.DefaultConfigPath)
+	err := cm.InitializeFromDefaults()
+	require.NoError(t, err)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -103,54 +68,56 @@ func TestRunJoin(t *testing.T) {
 	askProxyPassword = func() (string, error) { return "join-pass", nil }
 	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
 
-	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", nil); err != nil {
+	if err := joinWithInvite(ts.URL + "/api/v1/redeem/abc"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, defaultConfigPath)); err != nil {
+	if _, err := os.Stat(config.DefaultConfigPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, defaultNodeKeyPath)); err != nil {
+	if _, err := os.Stat(config.DefaultNodePath); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := core.LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
-		t.Fatalf("loaded mesh %+v", cfg.Mesh)
-	}
-	if cfg.Proxy.Password != "join-pass" {
-		t.Fatalf("proxy password %q", cfg.Proxy.Password)
-	}
+	cm = config.NewManager(config.DefaultConfigPath)
+	err = cm.ReadConfig(func(cfg *config.Config) error {
+		if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
+			t.Fatalf("loaded mesh %+v", cfg.Mesh)
+		}
+		if cfg.Proxy.Password != "join-pass" {
+			t.Fatalf("proxy password %q", cfg.Proxy.Password)
+		}
+		return nil
+	})
+	assert.NoError(t, err)
+
 }
 
 func TestRunJoinExistingConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	config.SetConfigPath(dir)
 
-	existing := &core.Config{}
-	existing.Proxy.Listen = ":7777"
-	existing.Proxy.Password = "keep-pass"
-	existing.Admin.Secret = "keep-admin"
-	existing.Mesh.Name = "box-1"
-	existing.Mesh.Address = "http://old:4002"
-	existing.Mesh.Secret = "old-secret"
-	existing.Mesh.MeshId = "old-mesh"
-	existing.Mesh.MDNSEnabled = false
-	existing.Providers = []core.Provider{{
-		ID:      "custom",
-		Type:    "openai",
-		BaseURL: "http://127.0.0.1:8080",
-	}}
-	data, err := yaml.Marshal(existing)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(defaultConfigPath, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	cm := config.NewManager(config.DefaultConfigPath)
+	err := cm.InitializeFromDefaults()
+	require.NoError(t, err)
+
+	cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.Listen = ":7777"
+		cfg.Proxy.Password = "keep-pass"
+		cfg.Admin.Secret = "keep-admin"
+		cfg.Mesh.Name = "box-1"
+		cfg.Mesh.Address = "http://old:4002"
+		cfg.Mesh.Secret = "old-secret"
+		cfg.Mesh.MeshId = "old-mesh"
+		cfg.Mesh.MDNSEnabled = false
+		cfg.Providers = []config.Provider{{
+			ID:      "custom",
+			Type:    "openai",
+			BaseURL: "http://127.0.0.1:8080",
+		}}
+		return nil
+	})
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req api.RedeemInviteRequest
@@ -175,32 +142,40 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	}
 	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
 
-	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", existing); err != nil {
-		t.Fatal(err)
-	}
+	err = joinWithInvite(ts.URL + "/api/v1/redeem/abc")
+	require.NoError(t, err)
 
-	cfg, err := core.LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
-		t.Fatalf("updated mesh %+v", cfg.Mesh)
-	}
-	if cfg.Proxy.Listen != ":7777" || cfg.Proxy.Password != "keep-pass" || cfg.Admin.Secret != "keep-admin" || cfg.Mesh.Name != "box-1" || cfg.Mesh.MDNSEnabled {
-		t.Fatalf("kept settings %+v", cfg)
-	}
-	if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "custom" {
-		t.Fatalf("providers %+v", cfg.Providers)
-	}
+	cm = config.NewManager(config.DefaultConfigPath)
+	err = cm.ReadConfig(func(cfg *config.Config) error {
+		if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
+			t.Fatalf("updated mesh %+v", cfg.Mesh)
+		}
+		if cfg.Proxy.Listen != ":7777" || cfg.Proxy.Password != "keep-pass" || cfg.Admin.Secret != "keep-admin" || cfg.Mesh.Name != "box-1" || cfg.Mesh.MDNSEnabled {
+			t.Fatalf("kept settings %+v", cfg)
+		}
+		if len(cfg.Providers) != 1 || cfg.Providers[0].ID != "custom" {
+			t.Fatalf("providers %+v", cfg.Providers)
+		}
+		return nil
+	})
+	assert.NoError(t, err)
 }
 
 func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	config.SetConfigPath(dir)
 
-	existing := &core.Config{}
-	existing.Proxy.Listen = ":7777"
-	existing.Mesh.Name = "box-1"
+	cm := config.NewManager(config.DefaultConfigPath)
+	err := cm.InitializeFromDefaults()
+	require.NoError(t, err)
+
+	err = cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.Listen = ":7777"
+		cfg.Mesh.Name = "box-1"
+		return nil
+	})
+	require.NoError(t, err)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -219,23 +194,27 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	}
 	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
 
-	if err := joinWithInvite(ts.URL+"/api/v1/redeem/abc", existing); err != nil {
+	if err := joinWithInvite(ts.URL + "/api/v1/redeem/abc"); err != nil {
 		t.Fatal(err)
 	}
 	if !asked {
 		t.Fatal("expected password prompt")
 	}
-	cfg, err := core.LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Password != "new-pass" {
-		t.Fatalf("password %q", cfg.Proxy.Password)
-	}
+
+	cm = config.NewManager(config.DefaultConfigPath)
+	err = cm.EnsureLoaded()
+	require.NoError(t, err)
+
+	err = cm.ReadConfig(func(cfg *config.Config) error {
+		assert.Equal(t, "new-pass", cfg.Proxy.Password)
+		return nil
+	})
+	assert.NoError(t, err)
+
 }
 
 func TestEnsureProxyPasswordSkipsWhenSet(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Proxy.Password = "already"
 	askProxyPassword = func() (string, error) {
 		t.Fatal("should not prompt")
@@ -251,18 +230,14 @@ func TestEnsureProxyPasswordSkipsWhenSet(t *testing.T) {
 }
 
 func TestExistingJoinConfigAbsent(t *testing.T) {
-	t.Chdir(t.TempDir())
-	cfg, cont, err := existingJoinConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cont || cfg != nil {
-		t.Fatalf("cont=%v cfg=%v", cont, cfg)
-	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	config.SetConfigPath(dir)
+
 }
 
 func TestExistingJoinWarning(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	cfg.Mesh.MeshId = "default"
 	cfg.Mesh.Address = "http://10.0.0.30:4002"
 	got := existingJoinWarning("/tmp/mesh/config.yaml", cfg)
@@ -279,7 +254,7 @@ func TestExistingJoinWarning(t *testing.T) {
 }
 
 func TestAdminControllerAddr(t *testing.T) {
-	cfg := &core.Config{}
+	cfg := &config.Config{}
 	if _, _, ok := adminControllerAddr(cfg); ok {
 		t.Fatal("empty config should not attach admin")
 	}

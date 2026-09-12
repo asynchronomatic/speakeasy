@@ -9,11 +9,11 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-func discoverPublicAddress(config *core.Config) string {
+func discoverPublicAddress(config *config.Config) string {
 	publicAddress := config.Mesh.PublicAddress
 	switch publicAddress {
 	case "", "auto":
@@ -78,14 +78,14 @@ func newCommand() *cli.Command {
 				Name:  "proxy",
 				Usage: "Start the local OpenAI/Ollama proxy on this mesh",
 				Action: func(context.Context, *cli.Command) error {
-					return runProxy(core.MustLoadConfig())
+					return runProxy()
 				},
 			},
 			{
 				Name:  "admin",
 				Usage: "Run the admin HTTP API and libp2p relay",
 				Action: func(context.Context, *cli.Command) error {
-					return runAdminAndRelay(core.MustLoadConfig())
+					return runAdminAndRelay()
 				},
 			},
 			{
@@ -93,7 +93,7 @@ func newCommand() *cli.Command {
 				Aliases: []string{"standalone", "proxy+admin"},
 				Usage:   "Run admin, relay, and proxy on one machine",
 				Action: func(context.Context, *cli.Command) error {
-					return runHybrid(core.MustLoadConfig())
+					return runHybrid()
 				},
 			},
 			{

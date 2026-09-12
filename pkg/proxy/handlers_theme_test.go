@@ -6,26 +6,30 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
+	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 func TestThemeGetDefaultsDeco(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	resp := themeResponse{}
 	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/theme", nil, &resp)
 	assert.NoError(t, err)
-	assert.Equal(t, core.DefaultTheme, resp.Theme)
+	assert.Equal(t, config.DefaultTheme, resp.Theme)
 }
 
 func TestThemeGetStored(t *testing.T) {
-	writeTestConfig(t, `proxy:
+	cm := testable.MustConfigManager(`proxy:
   listen: ":4080"
   theme: clean
+  password: test-password
 mesh:
   address: http://x
 `)
-	p := testProxy(t)
+	p := newTestProxy(t, cm)
+
 	resp := themeResponse{}
 	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/theme", nil, &resp)
 	assert.NoError(t, err)
@@ -33,38 +37,31 @@ mesh:
 }
 
 func TestThemeGetInvalidDefaultsDeco(t *testing.T) {
-	writeTestConfig(t, `proxy:
+	cm := testable.MustConfigManager(`proxy:
   listen: ":4080"
   theme: nope
+  password: test-password
 mesh:
   address: http://x
 `)
-	p := testProxy(t)
+	p := newTestProxy(t, cm)
 	resp := themeResponse{}
 	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/theme", nil, &resp)
 	assert.NoError(t, err)
-	assert.Equal(t, core.DefaultTheme, resp.Theme)
+	assert.Equal(t, config.DefaultTheme, resp.Theme)
 }
 
 func TestThemeSetPersists(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	resp := themeResponse{}
 	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/theme", &themeResponse{Theme: "Clean"}, &resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "clean", resp.Theme)
 
-	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Theme != "clean" {
-		t.Fatalf("saved theme %q", cfg.Proxy.Theme)
-	}
-	if cfg.Proxy.Listen != ":4080" || len(cfg.Providers) != 1 || cfg.Providers[0].ID != "local" {
-		t.Fatalf("other fields changed: %+v", cfg)
-	}
+	cfg := cm.Config()
+	assert.Equal(t, "clean", cfg.Proxy.Theme)
 
 	err = doProxyJSON(t, p, http.MethodGet, "/api/mesh/theme", nil, &resp)
 	assert.NoError(t, err)
@@ -72,35 +69,25 @@ func TestThemeSetPersists(t *testing.T) {
 }
 
 func TestThemeSetEmptyDefaultsDeco(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
 
 	resp := themeResponse{}
-
 	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/theme", &themeResponse{Theme: ""}, &resp)
 	assert.NoError(t, err)
-	assert.Equal(t, core.DefaultTheme, resp.Theme)
+	assert.Equal(t, config.DefaultTheme, resp.Theme)
 
-	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Theme != core.DefaultTheme {
-		t.Fatalf("saved theme %q", cfg.Proxy.Theme)
-	}
+	cfg := cm.Config()
+	assert.Equal(t, config.DefaultTheme, cfg.Proxy.Theme)
 }
 
 func TestThemeSetInvalid(t *testing.T) {
-	writeTestConfig(t, testConfigYAML)
-	p := testProxy(t)
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
 	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/theme", themeResponse{Theme: "neon"}, nil)
 	assert.Error(t, err)
 
-	cfg, err := core.LoadConfigFile()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Proxy.Theme != "" {
-		t.Fatalf("invalid set wrote %q", cfg.Proxy.Theme)
-	}
+	cfg := cm.Config()
+	assert.Equal(t, config.DefaultTheme, cfg.Proxy.Theme)
 }

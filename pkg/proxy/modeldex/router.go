@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/exp/maps"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
@@ -19,7 +20,7 @@ import (
 
 type ModelRouter struct {
 	node       core.PeerNode
-	providers  []core.Provider // configured providers for rescanning
+	providers  []config.Provider // configured providers for rescanning
 	lock       sync.Mutex
 	MeshModels map[string]ModelRoute // MeshModelswill be forwarded out
 	httpClient *http.Client
@@ -47,7 +48,7 @@ func (e *ModelRouter) ListMeshModels() []ModelRoute {
 	return maps.Values(e.MeshModels)
 }
 
-func (e *ModelRouter) modelsFromWhitelist(provider *core.Provider) map[string]ModelRoute {
+func (e *ModelRouter) modelsFromWhitelist(provider *config.Provider) map[string]ModelRoute {
 	modelTable := make(map[string]ModelRoute)
 
 	for _, m := range provider.Models {
@@ -69,10 +70,10 @@ func (e *ModelRouter) modelsFromWhitelist(provider *core.Provider) map[string]Mo
 	return modelTable
 }
 
-func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]ModelRoute, error) {
+func (e *ModelRouter) ollamaFetchModels(provider *config.Provider) (map[string]ModelRoute, error) {
 	models := make(map[string]ModelRoute)
 
-	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
+	if _, err := config.ParseProviderURL(provider.BaseURL, true); err != nil {
 		log.WithName("mdex").Errorf("failed to parse provider URL: %v", err)
 		return nil, err
 	}
@@ -146,8 +147,8 @@ func (e *ModelRouter) ollamaFetchModels(provider *core.Provider) (map[string]Mod
 	return models, nil
 }
 
-func (e *ModelRouter) openaiFetchModels(provider *core.Provider) (map[string]ModelRoute, error) {
-	if _, err := core.ParseProviderURL(provider.BaseURL, true); err != nil {
+func (e *ModelRouter) openaiFetchModels(provider *config.Provider) (map[string]ModelRoute, error) {
+	if _, err := config.ParseProviderURL(provider.BaseURL, true); err != nil {
 		return nil, err
 	}
 	client := jsonrpc.NewClient(provider.BaseURL, provider.Token).WithDoer(e.httpClient)
@@ -189,7 +190,7 @@ func (e *ModelRouter) openaiFetchModels(provider *core.Provider) (map[string]Mod
 	return models, nil
 }
 
-func (e *ModelRouter) testFetchModels(provider *core.Provider) (map[string]ModelRoute, error) {
+func (e *ModelRouter) testFetchModels(provider *config.Provider) (map[string]ModelRoute, error) {
 	return e.modelsFromWhitelist(provider), nil
 }
 
@@ -276,9 +277,9 @@ func (e *ModelRouter) GetModelRoute(model string) *ModelRoute {
 	return nil
 }
 
-func NewModelDiscovery(node core.PeerNode, providers []core.Provider, httpClient *http.Client) *ModelRouter {
+func NewModelDiscovery(node core.PeerNode, providers []config.Provider, httpClient *http.Client) *ModelRouter {
 	if httpClient == nil {
-		httpClient = core.NewProviderHTTPClient(false)
+		httpClient = config.NewProviderHTTPClient(false)
 	}
 	return &ModelRouter{
 		node:       node,

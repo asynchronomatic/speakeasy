@@ -17,10 +17,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
-	"github.com/libp2p/go-libp2p/p2p/net/swarm"
-	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/security"
@@ -34,20 +33,14 @@ func init() {
 	observedaddrs.ActivationThresh = 1
 }
 
-const (
-	streamDialAttempts = 6
-	streamDialTimeout  = 30 * time.Second
-)
-
 type Service struct {
 	node      core.PeerNode
 	h         host.Host
-	res       *client.Reservation
 	relayInfo []peer.AddrInfo
 	ctrl      *api.MeshClient // mesh control api
 	peers     map[string]peer.ID
 	handler   http.HandlerFunc
-	config    *core.MeshConfig
+	config    *config.MeshConfig
 	discovery *DiscoveryManager
 	allow     *PeerAllowList
 }
@@ -67,12 +60,6 @@ func (m *Service) connectNode(destNode string) peer.ID {
 	destID := AddDestViaRelay(m.h, m.relayInfo[0], destNode)
 	m.peers[destNode] = destID
 	return destID
-}
-
-func (m *Service) clearDialBackoff(id peer.ID) {
-	if sw, ok := m.h.Network().(*swarm.Swarm); ok {
-		sw.Backoff().Clear(id)
-	}
 }
 
 // openStreamDirect attempts to open a stream on a direct connection, if we do not have a direct connection a dial is attempted
@@ -255,35 +242,6 @@ func (m *Service) GetPeerMap() (map[string]core.PeerNode, error) {
 	return peers, err
 }
 
-func (m *Service) diffNodes(old, new map[string]api.Node) (map[string]api.Node, map[string]api.Node) {
-	addedOrChanged := make(map[string]api.Node)
-	removed := make(map[string]api.Node)
-
-	// Find added or changed nodes
-	for id, newNode := range new {
-		if id == m.node.ID { // filter self
-			continue
-		}
-
-		if oldNode, exists := old[id]; !exists || !oldNode.LastUpdate.Equal(newNode.LastUpdate) {
-			addedOrChanged[id] = newNode
-		}
-	}
-
-	// Find removed nodes
-	for id, oldNode := range old {
-		if id == m.node.ID { // filter self
-			continue
-		}
-
-		if _, exists := new[id]; !exists {
-			removed[id] = oldNode
-		}
-	}
-
-	return addedOrChanged, removed
-}
-
 func (m *Service) GetPeerMeshInfo(node core.PeerNode) *core.MeshInfo {
 	info := core.MeshInfo{
 		AdvertisedAddresses: make([]string, 0),
@@ -308,14 +266,14 @@ func (m *Service) GetPeerMeshInfo(node core.PeerNode) *core.MeshInfo {
 			RemoteAddress: conn.RemoteMultiaddr().String(),
 			LocalAddress:  conn.LocalMultiaddr().String(),
 			Direction:     conn.Stat().Direction.String(),
-			Security:      fmt.Sprintf("%s", conn.ConnState().Security),
+			Security:      string(conn.ConnState().Security),
 			Multiplexer:   conn.ConnState().Transport,
 			Kind:          ConnKind(conn),
 		}
 		streams := conn.GetStreams()
 		cd.StreamCount = len(streams)
 		for _, stream := range streams {
-			cd.Streams = append(cd.Streams, fmt.Sprintf("%s", stream.Protocol()))
+			cd.Streams = append(cd.Streams, string(stream.Protocol()))
 		}
 		info.Connections = append(info.Connections, cd)
 	}
@@ -344,10 +302,10 @@ func (m *Service) Disconnect() error {
 	return nil
 }
 
-func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
+func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
 	mesh, err := api.NewClient(mc.Address, mc.Secret).Mesh("default")
 	if err != nil {
-		return nil, fmt.Errorf("could open mesh admin client. err:%v\n", err)
+		return nil, fmt.Errorf("could open mesh admin client err:%v", err)
 	}
 
 	// load our node key (or create a new one)
@@ -363,7 +321,7 @@ func NewService(mc *core.MeshConfig, gater connmgr.ConnectionGater) (*Service, e
 
 	err = mesh.Login(nodeID, mc.Secret)
 	if err != nil {
-		return nil, fmt.Errorf("could not login to mesh. err:%v\n", err)
+		return nil, fmt.Errorf("could not login to mesh err:%v", err)
 	}
 
 	// Retrieve the bootstrap address of our public relays

@@ -38,18 +38,7 @@ type UserAuth struct {
 }
 
 func (a *UserAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
-	var token string
-
-	/* we could try the cookie scheme.... one thing with the cookies is we could refresh them?
-
-	tokenCookie, err := r.Cookie("token")
-	if err == nil {
-		token = tokenCookie.Value
-	} else {
-
-	*/
-
-	token = security.GetToken(r)
+	token := security.GetToken(r)
 	if token == "" {
 		return nil, http.StatusUnauthorized
 	}

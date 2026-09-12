@@ -17,11 +17,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/negrel/assert"
 	"github.com/sethvargo/go-retry"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
@@ -35,15 +35,6 @@ import (
 const maxBody = 8 << 20 // 1 MiB
 
 const MeshModelPrefix = ""
-
-var proxyHandleURLS = []string{
-	// open ai
-	"/v1/chat/completions",
-	"/v1/responses",
-	"/v1/embeddings",
-	// Anthropic
-	"/v1/messages",
-}
 
 type RequestPeek struct {
 	Model string
@@ -60,6 +51,8 @@ type Proxy struct {
 	admin *api.AdminClient
 	auth  *auth.UserAuth
 	lock  sync.RWMutex
+
+	cm config.ManagerProvider
 
 	inferenceAuth *auth.InferenceAuth
 
@@ -112,23 +105,28 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	if local != nil {
 		log.WithName("proxy").Debugf(" -- Servicing via provider: %s (%s)\n", local.BaseURL, model)
 
-		u, err := core.ParseProviderURL(local.BaseURL, p.allowPrivate)
+		u, err := config.ParseProviderURL(local.BaseURL, p.allowPrivate)
 		if err != nil {
 			log.WithName("proxy").Errorf("provider url not allowed: %v", err)
 			http.Error(w, "provider url not allowed", http.StatusBadGateway)
 			return
 		}
 
-		proxy := httputil.NewSingleHostReverseProxy(u)
-		orig := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			orig(req)
-			req.Host = u.Host
-			security.ScrubHeaders(req, security.DefaultAllowedHeaders)
-			if local.Token != "" {
-				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
-			}
+		proxy := &httputil.ReverseProxy{
+			// Do not include Director: func... here
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(u)
+
+				// pr.SetURL(u) // Use this if you need to handle the target URL scheme/host routing manually
+				pr.Out.URL.Scheme = "http"
+				pr.Out.Host = u.Host
+				security.ScrubHeaders(pr.Out, security.DefaultAllowedHeaders)
+				if local.Token != "" {
+					pr.Out.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
+				}
+			},
 		}
+
 		proxy.Transport = p.providerRT
 		proxy.ModifyResponse = rejectProviderRedirect
 		proxy.ServeHTTP(w, r)
@@ -152,25 +150,13 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 
 	log.Debugf(" -- Servicing via mesh node: %s\n", destNode)
 	p.mesh.ProxyToNode(*destNode, w, r)
-	return
-}
-
-func scrubProviderRequest(req *http.Request, token string) {
-	req.Header.Del("Authorization")
-	req.Header.Del("Proxy-Authorization")
-	req.Header.Del("Cookie")
-	req.Header.Del("X-Api-Key")
-	req.Header.Del("Origin")
-	if token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	}
 }
 
 func rejectProviderRedirect(resp *http.Response) error {
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
 		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-		return core.ErrProviderRedirect
+		return config.ErrProviderRedirect
 	}
 	return nil
 }
@@ -242,7 +228,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cid := atomic.AddUint64(&p.cid, 1)
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
 	security.SetHeaders(w)
 	p.mux.ServeHTTP(w, r)
@@ -256,13 +242,27 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (mesh:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Now().Sub(start).Round(time.Second), cid, r.Method, r.URL.Path)
+	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
 	p.meshMux.ServeHTTP(w, r)
 }
 
 func (p *Proxy) Serve(ctx context.Context) error {
-	err := p.mesh.Connect()
+	err := p.cm.ReadConfig(func(config *config.Config) error {
+		p.inferenceAuth.SetInsecure(config.Proxy.InferenceTokens.Insecure)
+		for _, t := range config.Proxy.InferenceTokens.Tokens {
+			err := p.inferenceAuth.AddToken(t.Token)
+			if err != nil {
+				log.Warnf("Found invalid inference token: %s", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = p.mesh.Connect()
 	if err != nil {
 		return err
 	}
@@ -300,10 +300,14 @@ func (p *Proxy) Serve(ctx context.Context) error {
 }
 
 func (p *Proxy) WithAdminController(admin *api.AdminClient) {
+	if admin == nil {
+		return
+	}
 	log.WithName("proxy").Warnf("Enabled Admin Controller (Admin Token Configured)")
 	p.admin = admin
 }
 
+/*
 func (p *Proxy) WithAdminToken(token string) {
 	assert.NotNil(token)
 	p.auth = auth.NewUserAuth()
@@ -311,7 +315,7 @@ func (p *Proxy) WithAdminToken(token string) {
 	log.WithName("proxy").Warnf("Enabled UI Authentication")
 }
 
-func (p *Proxy) WithInferenceTokens(insecure bool, tokens []core.InferenceToken) {
+func (p *Proxy) WithInferenceTokens(insecure bool, tokens []config.InferenceToken) {
 	p.inferenceAuth.SetInsecure(insecure)
 	for _, t := range tokens {
 		err := p.inferenceAuth.AddToken(t.Token)
@@ -319,13 +323,41 @@ func (p *Proxy) WithInferenceTokens(insecure bool, tokens []core.InferenceToken)
 			log.Warnf("Found invalid inference token: %s", err)
 		}
 	}
-}
+}*/
 
 // NewProxy creates a local proxy that routes ollama requests based on model name to a specific
 // endpoint on the network
-func NewProxy(meshService core.MeshServiceProvider, listen string, providers []core.Provider, allowPrivateBackends bool) (*Proxy, error) {
-	providerRT := core.NewProviderTransport(allowPrivateBackends)
-	modelRouter := modeldex.NewModelDiscovery(meshService.Node(), providers, core.NewProviderHTTPClientTransport(providerRT))
+func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (*Proxy, error) {
+	var allowPrivateBackends = false
+	var listen = ":4080"
+	var modelRouter *modeldex.ModelRouter
+	var providerRT *http.Transport
+	var inferenceAuth = auth.NewInferenceAuth()
+	var proxyAuth = auth.NewUserAuth()
+
+	err := cm.ReadConfig(func(cfg *config.Config) error {
+		allowPrivateBackends = cfg.PrivateBackendsAllowed()
+		listen = cfg.Proxy.Listen
+		providerRT = config.NewProviderTransport(allowPrivateBackends)
+		modelRouter = modeldex.NewModelDiscovery(meshService.Node(), cfg.Providers, config.NewProviderHTTPClientTransport(providerRT))
+
+		inferenceAuth.SetInsecure(cfg.Proxy.InferenceTokens.Insecure)
+		for _, t := range cfg.Proxy.InferenceTokens.Tokens {
+			err := inferenceAuth.AddToken(t.Token)
+			if err != nil {
+				log.Warnf("Found invalid inference token: %s", err)
+			}
+		}
+
+		proxyAuth = auth.NewUserAuth()
+		proxyAuth.WithUser(jsonrpc.AdminUser, jsonrpc.AdminGroup, cfg.Proxy.Password)
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	modelRouter.Refresh()
 
 	p := &Proxy{
@@ -337,8 +369,10 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 		notifier:      socket.NewNotifier(),
 		allowPrivate:  allowPrivateBackends,
 		providerRT:    providerRT,
-		inferenceAuth: auth.NewInferenceAuth(),
+		auth:          proxyAuth,
+		inferenceAuth: inferenceAuth,
 		wsTickets:     make(map[string]time.Time),
+		cm:            cm,
 	}
 
 	//-------------------------------------------
@@ -367,9 +401,6 @@ func NewProxy(meshService core.MeshServiceProvider, listen string, providers []c
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))
-	p.mux.HandleFunc("GET /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugGetHandler)))
-	p.mux.HandleFunc("POST /api/mesh/debug", p.authenticated(jsonrpc.AsAdmin(p.debugSetHandler)))
-
 	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeGetHandler)))
 	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeSetHandler)))
 
