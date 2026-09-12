@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jxskiss/base62"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,6 +29,31 @@ func PasswordHash(password string) ([]byte, error) {
 
 func PasswordCompare(stored, received []byte) error {
 	return bcrypt.CompareHashAndPassword(stored, received)
+}
+
+func PasswordHashAndEncode(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return base62.EncodeToString(hash), nil
+}
+
+func MustPasswordHashAndEncodeBase62(password string) string {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return base62.EncodeToString(hash)
+}
+
+func CompareBase62Password(encoded string, provided string) error {
+	decoded, err := base62.DecodeString(encoded)
+	if err != nil {
+		return err
+	}
+
+	return bcrypt.CompareHashAndPassword(decoded, []byte(provided))
 }
 
 func DummySecretMatchEx(secret []byte) {

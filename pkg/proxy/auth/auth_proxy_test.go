@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 func TestUserAuth(t *testing.T) {
 	a := NewUserAuth()
-	u := a.WithUser("admin", "test", "test-password")
+	u := a.WithUser("admin", "test", security.MustPasswordHashAndEncodeBase62("test-password"))
 	if u == nil {
 		t.Errorf("expected user to be created")
 	}

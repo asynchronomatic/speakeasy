@@ -60,6 +60,7 @@ func (e *ModelRouter) modelsFromWhitelist(provider *config.Provider) map[string]
 		route.ModifiedAt = time.Now()
 		route.Owner = ""
 		route.providers = append(route.providers, ModelProvider{
+			ID:       provider.ID,
 			Private:  m.Private,
 			Provider: provider.Type,
 			BaseURL:  provider.BaseURL,
@@ -114,6 +115,7 @@ func (e *ModelRouter) ollamaFetchModels(provider *config.Provider) (map[string]M
 			}
 
 			route.providers = append(route.providers, ModelProvider{
+				ID:       provider.ID,
 				Private:  provider.Private,
 				Provider: provider.Type,
 				BaseURL:  provider.BaseURL,
@@ -178,6 +180,7 @@ func (e *ModelRouter) openaiFetchModels(provider *config.Provider) (map[string]M
 			route.Capabilities = w.Capabilities
 		}
 		route.providers = append(route.providers, ModelProvider{
+			ID:       provider.ID,
 			Private:  provider.Private,
 			Provider: provider.Type,
 			BaseURL:  provider.BaseURL,
@@ -202,15 +205,29 @@ func (e *ModelRouter) ListModels() []string {
 	return models
 }
 
-func (e *ModelRouter) AddPeerModels(node core.PeerNode, models map[string]ModelRoute) {
+// fixme.... an update can add and remove a model
+func (e *ModelRouter) UpdatePeerModels(node core.PeerNode, peerModels map[string]ModelRoute) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
+	// remove any models that are missing
+	for k, model := range e.MeshModels {
+		if _, ok := model.peers[node.ID]; !ok {
+			continue
+		}
+		if _, ok := peerModels[k]; !ok {
+			model.RemovePeer(node)
+		}
+		if !model.IsAvailable() {
+			delete(e.MeshModels, k)
+		}
+	}
 
-	for name := range models {
+	// add or update existing
+	for name := range peerModels {
 		route, ok := e.MeshModels[name]
 		if !ok {
-			log.Debugf("adding peer model %s: %+v", name, models[name])
-			route = models[name]
+			log.Debugf("adding peer model %s: %+v", name, peerModels[name])
+			route = peerModels[name]
 		}
 
 		route.AddPeer(node)
@@ -224,48 +241,79 @@ func (e *ModelRouter) RemovePeer(node core.PeerNode) {
 
 	for k, model := range e.MeshModels {
 		model.RemovePeer(node)
+
 		if !model.IsAvailable() {
 			delete(e.MeshModels, k)
 		}
 	}
 }
 
-func (e *ModelRouter) Refresh() {
-	for _, provider := range e.providers {
-		var err error
-		var routes map[string]ModelRoute
-
-		switch provider.Type {
-		case "ollama":
-			routes, err = e.ollamaFetchModels(&provider)
-			if err != nil {
-				log.Warnf("%s", err)
-				continue
-			}
-		case "openai":
-			routes, err = e.openaiFetchModels(&provider)
-			if err != nil {
-				log.Warnf("%s", err)
-				continue
-			}
-
-		case "test":
-			routes, err = e.testFetchModels(&provider)
-			if err != nil {
-				log.Warnf("%s", err)
-				continue
-			}
-
-		default:
-			log.Warnf("Unsupported provider type: %s", provider.Type)
-			continue
-		}
-
-		e.AddPeerModels(e.node, routes)
-	}
-
+func (e *ModelRouter) RemoveProvider(provider config.Provider) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
+
+	for k, model := range e.MeshModels {
+		changed := false
+		for i, p := range model.providers {
+			if p.ID == provider.ID {
+				model.providers = append(model.providers[:i], model.providers[i+1:]...)
+				delete(e.MeshModels, k)
+				model.RemovePeer(e.node)
+				changed = true
+			}
+		}
+
+		if changed {
+			e.MeshModels[k] = model
+		}
+
+		if !model.IsAvailable() {
+			delete(e.MeshModels, k)
+		}
+	}
+}
+
+func (e *ModelRouter) AddProvider(provider config.Provider) error {
+	return e.handleProviderCreate(provider)
+}
+
+func (e *ModelRouter) handleProviderCreate(provider config.Provider) error {
+	var err error
+	var routes map[string]ModelRoute
+
+	switch provider.Type {
+	case "ollama":
+		routes, err = e.ollamaFetchModels(&provider)
+		if err != nil {
+			return err
+		}
+	case "openai":
+		routes, err = e.openaiFetchModels(&provider)
+		if err != nil {
+			return err
+		}
+
+	case "test":
+		routes, err = e.testFetchModels(&provider)
+		if err != nil {
+			return err
+		}
+
+	default:
+		return fmt.Errorf("unsupported")
+	}
+
+	e.UpdatePeerModels(e.node, routes)
+	return nil
+}
+
+func (e *ModelRouter) Refresh() {
+	for _, provider := range e.providers {
+		err := e.handleProviderCreate(provider)
+		if err != nil {
+			log.Errorf("%s: %v", provider.ID, err)
+		}
+	}
 }
 
 func (e *ModelRouter) GetModelRoute(model string) *ModelRoute {

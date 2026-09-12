@@ -92,12 +92,14 @@ func (p *Proxy) providerAddHandler(rpc *jsonrpc.RPC) error {
 	}
 
 	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
-		log.Warnf("check provider id already exists: %s", prov.ID)
 		if providerIndex(cfg.Providers, prov.ID) >= 0 {
-
 			return jsonrpc.NewError(http.StatusConflict, "provider id already exists")
 		}
-		log.Warnf("providerAddHandler %s %s", prov.ID, "OKIEDOKIE")
+
+		err := p.modelRouter.AddProvider(prov)
+		if err != nil {
+			return err
+		}
 		cfg.Providers = append(cfg.Providers, prov)
 		return nil
 	})
@@ -131,7 +133,8 @@ func (p *Proxy) providerUpdateHandler(rpc *jsonrpc.RPC) error {
 
 		prov.Token = keepProviderToken(prov.Token, cfg.Providers[i].Token)
 		cfg.Providers[i] = prov
-		return nil
+
+		return p.modelRouter.AddProvider(prov)
 	})
 	if err != nil {
 		return err
@@ -146,17 +149,21 @@ func (p *Proxy) providerDeleteHandler(rpc *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "provider id is required")
 	}
 
+	var provider config.Provider
 	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
 		i := providerIndex(cfg.Providers, id)
 		if i < 0 {
 			return jsonrpc.NewError(http.StatusNotFound, "provider not found")
 		}
+		provider = cfg.Providers[i]
 		cfg.Providers = append(cfg.Providers[:i], cfg.Providers[i+1:]...)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	p.modelRouter.RemoveProvider(provider)
+
 	p.notifier.Broadcast() // notify ui of update
 	return rpc.ReplyObject(map[string]string{"id": id})
 }

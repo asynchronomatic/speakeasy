@@ -14,9 +14,9 @@ import (
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
-const testConfigYAML = `proxy:
+var testConfigYAML = `proxy:
   listen: ":4080"
-  password: test-password
+  password: ` + ProxyLoginHash + `
   allow_private_backends: true
 admin:
   secret: s
@@ -52,7 +52,7 @@ func TestProvidersList(t *testing.T) {
 func TestProvidersListEmpty(t *testing.T) {
 	cm := testable.MustConfigManager(`proxy:
   listen: ":1"
-  password: test-password
+  password: ` + ProxyLoginHash + `
 mesh:
   address: http://x
 `)
@@ -73,7 +73,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	var added config.Provider
 	err := doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:        "cloud",
-		Type:      "openai",
+		Type:      "test",
 		BaseURL:   "https://api.example",
 		Token:     "tok",
 		Private:   true,
@@ -81,7 +81,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}, &added)
 	assert.NoError(t, err)
 	assert.Equal(t, "cloud", added.ID)
-	assert.Equal(t, "openai", added.Type)
+	assert.Equal(t, "test", added.Type)
 	assert.Equal(t, "https://api.example", added.BaseURL)
 	assert.Equal(t, "", added.Token)
 	assert.Equal(t, true, added.Private)
@@ -101,7 +101,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 
 	var updated config.Provider
 	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
-		Type:      "openai",
+		Type:      "test",
 		BaseURL:   "https://api.example/v1",
 		Token:     "new-tok",
 		Private:   false,
@@ -109,7 +109,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	}, &updated)
 	assert.NoError(t, err)
 	assert.Equal(t, "cloud", updated.ID)
-	assert.Equal(t, "openai", updated.Type)
+	assert.Equal(t, "test", updated.Type)
 	assert.Equal(t, "https://api.example/v1", updated.BaseURL)
 	assert.Equal(t, "", updated.Token)
 	assert.Equal(t, false, updated.Private)
@@ -117,7 +117,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 
 	var gotCloud config.Provider
 	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
-		Type:      "openai",
+		Type:      "test",
 		BaseURL:   "https://api.example/v1",
 		Token:     "*",
 		Private:   false,
@@ -137,7 +137,7 @@ func TestProviderAddUpdateDelete(t *testing.T) {
 	assert.Equal(t, "new-tok", gotCloud.Token)
 
 	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers/cloud", config.Provider{
-		Type:      "openai",
+		Type:      "test",
 		BaseURL:   "https://api.example/v1",
 		Token:     "",
 		Private:   false,
@@ -222,7 +222,7 @@ func TestProviderAddRejectsPrivateWithoutOptIn(t *testing.T) {
 
 	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
 		ID:      "cloud",
-		Type:    "openai",
+		Type:    "test",
 		BaseURL: "https://api.example",
 	}, nil)
 	assert.NoError(t, err)

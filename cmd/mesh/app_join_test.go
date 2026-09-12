@@ -14,6 +14,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 func TestConfigPath(t *testing.T) {
@@ -84,9 +85,9 @@ func TestRunJoin(t *testing.T) {
 		if cfg.Mesh.Address != "http://10.0.0.30:4002" || cfg.Mesh.Secret != "join-secret" || cfg.Mesh.MeshId != "default" {
 			t.Fatalf("loaded mesh %+v", cfg.Mesh)
 		}
-		if cfg.Proxy.Password != "join-pass" {
-			t.Fatalf("proxy password %q", cfg.Proxy.Password)
-		}
+
+		err = security.CompareBase62Password(cfg.Proxy.Password, "join-pass")
+		assert.NoError(t, err)
 		return nil
 	})
 	assert.NoError(t, err)
@@ -206,7 +207,8 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	require.NoError(t, err)
 
 	err = cm.ReadConfig(func(cfg *config.Config) error {
-		assert.Equal(t, "new-pass", cfg.Proxy.Password)
+		err := security.CompareBase62Password(cfg.Proxy.Password, "new-pass")
+		assert.NoError(t, err)
 		return nil
 	})
 	assert.NoError(t, err)

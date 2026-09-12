@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/goccy/go-yaml"
+	"github.com/jinzhu/copier"
+	"github.com/negrel/assert"
 )
 
 type ManagerProvider interface {
@@ -62,12 +64,16 @@ func (m *Manager) deferredLoadConfig() error {
 }
 
 // flushConfig Manager lock should be held
-func (m *Manager) flushConfig() error {
-	data, err := yaml.Marshal(m.config)
+func (m *Manager) flushConfig(newConfig *Config) error {
+	data, err := yaml.Marshal(newConfig)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.configPath, data, 0o600)
+	if err = os.WriteFile(m.configPath, data, 0o600); err != nil {
+		return err
+	}
+	m.config = newConfig
+	return nil
 }
 
 func (m *Manager) UpdateConfig(updateFunc func(config *Config) error) error {
@@ -77,12 +83,16 @@ func (m *Manager) UpdateConfig(updateFunc func(config *Config) error) error {
 		return err
 	}
 
-	err := updateFunc(m.config)
+	newConfig := &Config{}
+	err := copier.Copy(newConfig, m.config)
+	assert.NoError(err, "could not copy config")
+
+	err = updateFunc(newConfig)
 	if err != nil {
 		return err
 	}
 
-	return m.flushConfig()
+	return m.flushConfig(newConfig)
 }
 
 func (m *Manager) ReadConfig(readOnly func(config *Config) error) error {
@@ -92,9 +102,13 @@ func (m *Manager) ReadConfig(readOnly func(config *Config) error) error {
 		return err
 	}
 
+	newConfig := &Config{}
+	err := copier.Copy(newConfig, m.config)
+	assert.NoError(err, "could not copy config")
+
 	// FIXME: make a copy of our config and throw away any changes
 	// also assert ig it was changed
-	return readOnly(m.config)
+	return readOnly(newConfig)
 }
 
 // EnsureLoaded ensures that a config has been loaded
@@ -128,14 +142,14 @@ func (m *Manager) InitializeFromDefaults() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.config = cfg
-	return m.flushConfig()
+	return m.flushConfig(m.config)
 }
 
 // Flush the config file to disk
 func (m *Manager) Flush() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	return m.flushConfig()
+	return m.flushConfig(m.config)
 }
 
 func NewManager(path string) *Manager {

@@ -24,7 +24,7 @@ func TestThemeGetStored(t *testing.T) {
 	cm := testable.MustConfigManager(`proxy:
   listen: ":4080"
   theme: clean
-  password: test-password
+  password: ` + ProxyLoginHash + `
 mesh:
   address: http://x
 `)
@@ -40,7 +40,7 @@ func TestThemeGetInvalidDefaultsDeco(t *testing.T) {
 	cm := testable.MustConfigManager(`proxy:
   listen: ":4080"
   theme: nope
-  password: test-password
+  password: ` + ProxyLoginHash + `
 mesh:
   address: http://x
 `)

@@ -1,76 +1,69 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"charm.land/huh/v2"
-
-	"github.com/asynchronomatic/speakeasy/pkg/config"
-	"github.com/asynchronomatic/speakeasy/pkg/log"
-	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
 // Install defaults. Change these to adjust what `mesh init` offers (and writes
 // if the user keeps the pre-filled value).
 var (
-	//defaultNodeKeyPath  = "node.key"
-	//defaultRelayKeyPath = "relay.key"
-	//defaultConfigPath   = config.DefaultConfigPath
+//defaultNodeKeyPath  = "node.key"
+//defaultRelayKeyPath = "relay.key"
+//defaultConfigPath   = config.DefaultConfigPath
 
-	defaultProxyListen    = config.DefaultProxyListen
-	defaultOllamaVersion  = "0.33.0"
-	defaultMeshName       = ""
-	defaultAdminAddress   = "http://127.0.0.1:4002"
-	defaultAdminPort      = config.DefaultAdminPort
-	defaultRelayPort      = config.DefaultRelayPort
-	defaultPublicAddress  = "auto"
-	defaultAppPort        = 0
-	defaultForcePrivate   = false
-	defaultMDNSEnabled    = true
-	defaultProviderID     = "localhost"
-	defaultProviderType   = "ollama"
-	defaultProviderURL    = "http://localhost:11434"
-	defaultModelDiscovery = "pinned"
+//defaultProxyListen    = config.DefaultProxyListen
+//defaultOllamaVersion  = "0.33.0"
+//defaultMeshName       = ""
+//defaultAdminAddress   = "http://127.0.0.1:4002"
+//defaultAdminPort      = config.DefaultAdminPort
+//defaultRelayPort      = config.DefaultRelayPort
+//defaultPublicAddress  = "auto"
+//defaultAppPort        = 0
+//defaultForcePrivate   = false
+//defaultMDNSEnabled    = true
+//defaultProviderID     = "localhost"
+//defaultProviderType   = "ollama"
+//defaultProviderURL    = "http://localhost:11434"
+//defaultModelDiscovery = "pinned"
 
-	// Empty means generate a random 32-byte hex secret at init time.
-	defaultAdminSecret = ""
+// Empty means generate a random 32-byte hex secret at init time.
+// defaultAdminSecret = ""
 )
 
-type installSettings struct {
-	NodeKeyPath  string
-	RelayKeyPath string
-	ConfigPath   string
+/*
+	type installSettings struct {
+		NodeKeyPath  string
+		RelayKeyPath string
+		ConfigPath   string
 
-	ProxyListen   string
-	OllamaVersion string
+		ProxyListen   string
+		OllamaVersion string
 
-	MeshName      string
-	AdminAddress  string
-	AdminSecret   string
-	AdminPort     int
-	RelayPort     int
-	PublicAddress string
-	AppPort       int
-	ForcePrivate  bool
-	MDNSEnabled   bool
+		MeshName      string
+		AdminAddress  string
+		AdminSecret   string
+		AdminPort     int
+		RelayPort     int
+		PublicAddress string
+		AppPort       int
+		ForcePrivate  bool
+		MDNSEnabled   bool
 
-	ProviderID     string
-	ProviderType   string
-	ProviderURL    string
-	ModelDiscovery string
-}
-
+		ProviderID     string
+		ProviderType   string
+		ProviderURL    string
+		ModelDiscovery string
+	}
+*/
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
+/*
 func generateAdminSecret() (string, error) {
 	if defaultAdminSecret != "" {
 		return defaultAdminSecret, nil
@@ -80,20 +73,22 @@ func generateAdminSecret() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
+}*/
 
 func aborted(err error) bool {
 	return err != nil && errors.Is(err, huh.ErrUserAborted)
 }
 
+/*
 func validatePort(s string) error {
 	n, err := strconv.Atoi(strings.TrimSpace(s))
 	if err != nil || n < 0 || n > 65535 {
 		return fmt.Errorf("enter a port between 0 and 65535")
 	}
 	return nil
-}
+}*/
 
+/*
 func collectInstallSettings() (installSettings, error) {
 	s := installSettings{
 		NodeKeyPath:    config.DefaultNodePath,
@@ -389,3 +384,4 @@ func initializeNewInstall() error {
 	fmt.Println("  mesh proxy+admin    # standalone")
 	return nil
 }
+*/

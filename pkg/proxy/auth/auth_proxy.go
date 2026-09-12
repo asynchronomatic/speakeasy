@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jxskiss/base62"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/asynchronomatic/speakeasy/pkg/security"
@@ -98,7 +99,7 @@ func (a *UserAuth) LoginApi(userid, password string) (string, int) {
 
 // WithUser adds a new user to the static authenticator
 func (a *UserAuth) WithUser(user, group, password string) *UserAuth {
-	hashed, err := security.PasswordHash(password)
+	hashed, err := base62.DecodeString(password)
 	if err != nil {
 		return nil
 	}
