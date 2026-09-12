@@ -335,19 +335,20 @@ input:focus, .select-input:focus {
   width: 100%;
 }
 
-.inference-tokens-toolbar {
+.settings-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
 }
 
-.settings-inference-insecure {
+.settings-inference-insecure,
+.switch-private {
   margin-bottom: 0;
   min-width: 0;
 }
 
-.inference-tokens-toolbar #inference-token-open {
+.settings-toolbar > .btn {
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -419,6 +420,33 @@ input:focus, .select-input:focus {
 
 .switch input:checked ~ .switch-label {
   color: var(--warn);
+}
+
+.switch-private input + .switch-track {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.switch-private input + .switch-track::after {
+  background: var(--danger);
+}
+
+.switch-private input ~ .switch-label {
+  color: var(--danger);
+}
+
+.switch-private input:checked + .switch-track {
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+
+.switch-private input:checked + .switch-track::after {
+  transform: translateX(18px);
+  background: var(--success);
+}
+
+.switch-private input:checked ~ .switch-label {
+  color: var(--success);
 }
 
 @media (prefers-reduced-motion: reduce) {

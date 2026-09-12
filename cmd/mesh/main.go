@@ -127,6 +127,21 @@ func newCommand() *cli.Command {
 							return runAdminAndRelay()
 						},
 					},
+					{
+						Name:    "config",
+						Aliases: []string{"conf", "cfg"},
+						Usage:   "Update config options",
+						Commands: []*cli.Command{
+							{
+								Name:    "password",
+								Aliases: []string{"pw", "pass"},
+								Usage:   "Change the admin server password",
+								Action: func(context.Context, *cli.Command) error {
+									return adminConfigSetPassword()
+								},
+							},
+						},
+					},
 				},
 			},
 			{

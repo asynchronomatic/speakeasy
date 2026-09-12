@@ -3,11 +3,10 @@ package main
 import (
 	"fmt"
 
-	"github.com/asynchronomatic/speakeasy/pkg/config"
-	"github.com/asynchronomatic/speakeasy/pkg/log"
-
 	"github.com/asynchronomatic/speakeasy/pkg/admin"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
@@ -59,4 +58,18 @@ func runAdminAndRelay() error {
 
 	// Run all of our services
 	return core.RunInterruptible(adminSvc, relaySvc)
+}
+
+func adminConfigSetPassword() error {
+	pw, err := askPassword("Protects the admin api")
+	if err != nil {
+		return err
+	}
+
+	cm := config.NewManager(config.DefaultConfigPath)
+	return cm.UpdateConfig(func(cfg *config.Config) error {
+		//cfg.Admin.Secret = security.MustPasswordHashAndEncodeBase62(pw)
+		cfg.Admin.Secret = pw
+		return nil
+	})
 }

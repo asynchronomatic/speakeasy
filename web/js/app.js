@@ -19,6 +19,7 @@
     pendingRevokeInvite: "",
     pendingKickNode: "",
     providers: [],
+    allowPrivateBackends: false,
     editingProvider: null,
     pendingDeleteProvider: "",
     inferenceTokens: [],
@@ -59,6 +60,7 @@
     chatPrivacy: document.getElementById("chat-privacy"),
     providersBody: document.getElementById("providers-body"),
     providersError: document.getElementById("providers-error"),
+    allowPrivateBackends: document.getElementById("allow-private-backends"),
     providerOpen: document.getElementById("provider-open"),
     providerModal: document.getElementById("provider-modal"),
     providerForm: document.getElementById("provider-form"),
@@ -177,11 +179,17 @@
 
   async function loadTheme() {
     try {
-      const data = await getJSON("/api/mesh/theme");
-      applyTheme(data.theme || data.Theme);
-    } catch (_) {
-      applyTheme(currentTheme());
-    }
+      if (window.__speakeasyThemeReady) {
+        await window.__speakeasyThemeReady;
+      } else {
+        const res = await fetch("/api/mesh/theme", { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error("theme");
+        const data = await res.json();
+        applyTheme(data.theme || data.Theme);
+        return;
+      }
+    } catch (_) {}
+    applyTheme(currentTheme());
   }
 
   function authHeaders(extra) {
@@ -287,7 +295,6 @@
       return;
     }
     state.appStarted = true;
-    loadTheme();
     renderWelcome();
     renderChatThread();
     updateChatControls();
@@ -296,8 +303,8 @@
   }
 
   async function bootAuth() {
-    showLoginOverlay();
     hideApp();
+    await loadTheme();
     const stored = loadStoredToken();
     if (stored) {
       setProxyToken(stored);
@@ -309,8 +316,7 @@
       } catch (_) {}
       setProxyToken("");
     }
-    if (el.loginUsername) el.loginUsername.value = "admin";
-    if (el.loginPassword) el.loginPassword.focus();
+    showLoginOverlay();
   }
 
   async function submitLogin(e) {
@@ -1264,6 +1270,30 @@
     if (state.view === "settings") renderProviders();
   }
 
+  function applyPrivateBackends(data) {
+    const on = !!(data && (data.allow_private_backends || data.AllowPrivateBackends));
+    state.allowPrivateBackends = on;
+    if (el.allowPrivateBackends) el.allowPrivateBackends.checked = on;
+  }
+
+  async function loadSettings() {
+    const data = await getJSON("/api/mesh/settings");
+    applyPrivateBackends(data);
+  }
+
+  async function savePrivateBackends() {
+    if (!el.allowPrivateBackends) return;
+    const on = !!el.allowPrivateBackends.checked;
+    setErrorEl(el.providersError, "");
+    try {
+      const data = await sendJSON("/api/mesh/settings", "POST", { allow_private_backends: on });
+      applyPrivateBackends(data);
+    } catch (err) {
+      el.allowPrivateBackends.checked = !on;
+      setErrorEl(el.providersError, err.message || String(err));
+    }
+  }
+
   async function renderSettings() {
     setErrorEl(el.providersError, "");
     setErrorEl(el.inferenceTokensError, "");
@@ -1273,6 +1303,11 @@
       state.inferenceTokens = [];
       setErrorEl(el.inferenceTokensError, err.message || String(err));
       renderInferenceTokens();
+    }
+    try {
+      await loadSettings();
+    } catch (err) {
+      setErrorEl(el.providersError, err.message || String(err));
     }
     try {
       await loadProviders();
@@ -2284,7 +2319,9 @@
   if (el.inferenceInsecure) {
     el.inferenceInsecure.addEventListener("change", () => saveInferenceInsecure());
   }
-  applyTheme(currentTheme());
+  if (el.allowPrivateBackends) {
+    el.allowPrivateBackends.addEventListener("change", () => savePrivateBackends());
+  }
   if (el.loginForm) {
     el.loginForm.addEventListener("submit", submitLogin);
   }

@@ -52,7 +52,7 @@ func proxyStart() error {
 }
 
 func proxyConfigSetPassword() error {
-	pw, err := promptProxyPassword()
+	pw, err := askPassword("Protects the local proxy UI and on this node.")
 	if err != nil {
 		return err
 	}

@@ -147,9 +147,9 @@ func joinWithInvite(link string) error {
 	return err
 }
 
-// askProxyPassword is the interactive prompt used when joining without
+// askPassword is the interactive prompt used when joining without
 // proxy.password. Tests replace it.
-var askProxyPassword = promptProxyPassword
+var askPassword = promptPassword
 
 func ensureProxyPassword(cfg *config.Config) error {
 	if cfg == nil {
@@ -158,13 +158,9 @@ func ensureProxyPassword(cfg *config.Config) error {
 	if strings.TrimSpace(cfg.Proxy.Password) != "" {
 		return nil
 	}
-	pw, err := askProxyPassword()
+	pw, err := askPassword("Protects the local proxy UI and on this node.")
 	if err != nil {
 		return err
-	}
-	pw = strings.TrimSpace(pw)
-	if pw == "" {
-		return fmt.Errorf("proxy.password is required")
 	}
 
 	encoded, err := security.PasswordHashAndEncode(pw)
@@ -175,13 +171,13 @@ func ensureProxyPassword(cfg *config.Config) error {
 	return nil
 }
 
-func promptProxyPassword() (string, error) {
+func promptPassword(description string) (string, error) {
 	var password, confirm string
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Proxy password").
-				Description("Protects the local proxy UI and API on this node.").
+				Description(description).
 				EchoMode(huh.EchoModePassword).
 				Value(&password).
 				Validate(func(s string) error {
@@ -208,5 +204,9 @@ func promptProxyPassword() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(password), nil
+	pw := strings.TrimSpace(password)
+	if pw == "" {
+		return "", fmt.Errorf("password is required")
+	}
+	return pw, nil
 }
