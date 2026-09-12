@@ -314,3 +314,52 @@ func (p *Proxy) inferenceTokensList(rpc *jsonrpc.RPC) error {
 
 	return rpc.ReplyObject(&resp)
 }
+
+type generalSettings struct {
+	AllowPrivateBackends bool `json:"allow_private_backends"`
+	MDNSEnabled          bool `json:"mdns_enabled"`
+}
+
+func (p *Proxy) settingsGetHandler(rpc *jsonrpc.RPC) error {
+	var resp generalSettings
+
+	err := p.cm.ReadConfig(func(cfg *config.Config) error {
+		resp.AllowPrivateBackends = cfg.Proxy.AllowPrivateBackends
+		//resp.MDNSEnabled = cfg.Mesh.MDNSEnabled
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return rpc.ReplyObject(&resp)
+}
+
+func (p *Proxy) applyPrivateBackends(allowed bool) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.allowPrivate = allowed
+	p.providerRT = config.NewProviderTransport(allowed)
+}
+
+func (p *Proxy) settingsSetHandler(rpc *jsonrpc.RPC) error {
+	var req generalSettings
+
+	if err := rpc.GetObject(&req); err != nil {
+		return err
+	}
+
+	var allowed bool
+	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.AllowPrivateBackends = req.AllowPrivateBackends
+		allowed = cfg.PrivateBackendsAllowed()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	p.applyPrivateBackends(allowed)
+	p.notifier.Broadcast()
+	return rpc.ReplyObject(&req)
+}

@@ -270,6 +270,33 @@ func TestProviderRejectsCrossOrigin(t *testing.T) {
 	}
 }
 
+func TestSettingsAllowPrivateBackends(t *testing.T) {
+	cm := testable.MustConfigManager(testConfigYAML)
+	p := newTestProxy(t, cm)
+
+	var got generalSettings
+	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/settings", nil, &got)
+	assert.NoError(t, err)
+	assert.True(t, got.AllowPrivateBackends)
+
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/settings", generalSettings{AllowPrivateBackends: false}, &got)
+	assert.NoError(t, err)
+	assert.False(t, got.AllowPrivateBackends)
+	assert.False(t, cm.Config().Proxy.AllowPrivateBackends)
+	assert.False(t, p.allowPrivate)
+
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/providers", config.Provider{
+		ID:      "local2",
+		Type:    "ollama",
+		BaseURL: "http://127.0.0.1:11434",
+	}, nil)
+	assert.Equal(t, http.StatusBadRequest, statusCode(err))
+
+	err = doProxyJSON(t, p, http.MethodPost, "/api/mesh/settings", generalSettings{AllowPrivateBackends: true}, &got)
+	assert.NoError(t, err)
+	assert.True(t, p.allowPrivate)
+}
+
 func TestProviderDeleteMissing(t *testing.T) {
 	p := newTestProxy(t, testable.MustConfigManager(testConfigYAML))
 	err := doProxyJSON(t, p, http.MethodDelete, "/api/mesh/providers/nope", nil, nil)

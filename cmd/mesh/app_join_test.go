@@ -66,8 +66,8 @@ func TestRunJoin(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	askProxyPassword = func() (string, error) { return "join-pass", nil }
-	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+	askPassword = func(description string) (string, error) { return "join-pass", nil }
+	t.Cleanup(func() { askPassword = promptPassword })
 
 	if err := joinWithInvite(ts.URL + "/api/v1/redeem/abc"); err != nil {
 		t.Fatal(err)
@@ -137,11 +137,11 @@ func TestRunJoinExistingConfig(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	askProxyPassword = func() (string, error) {
+	askPassword = func(description string) (string, error) {
 		t.Fatal("should not prompt when proxy.password is set")
 		return "", nil
 	}
-	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+	t.Cleanup(func() { askPassword = promptPassword })
 
 	err = joinWithInvite(ts.URL + "/api/v1/redeem/abc")
 	require.NoError(t, err)
@@ -189,11 +189,11 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	asked := false
-	askProxyPassword = func() (string, error) {
+	askPassword = func(description string) (string, error) {
 		asked = true
 		return "new-pass", nil
 	}
-	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+	t.Cleanup(func() { askPassword = promptPassword })
 
 	if err := joinWithInvite(ts.URL + "/api/v1/redeem/abc"); err != nil {
 		t.Fatal(err)
@@ -218,11 +218,11 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 func TestEnsureProxyPasswordSkipsWhenSet(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Proxy.Password = "already"
-	askProxyPassword = func() (string, error) {
+	askPassword = func(description string) (string, error) {
 		t.Fatal("should not prompt")
 		return "", nil
 	}
-	t.Cleanup(func() { askProxyPassword = promptProxyPassword })
+	t.Cleanup(func() { askPassword = promptPassword })
 	if err := ensureProxyPassword(cfg); err != nil {
 		t.Fatal(err)
 	}
