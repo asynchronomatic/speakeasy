@@ -70,6 +70,7 @@ func resetMembership() error {
 func resetAll() error {
 	configExists := fileExists(config.DefaultConfigPath)
 	keyExists := fileExists(config.DefaultNodePath)
+
 	if !configExists && !keyExists {
 		fmt.Println("Nothing to reset: config.yaml and node.key are not in this directory.")
 		return nil
@@ -88,6 +89,13 @@ func resetAll() error {
 		return err
 	}
 	if err := removeFile(config.DefaultNodePath); err != nil {
+		return err
+	}
+	if err := removeFile(config.DefaultRelayPath); err != nil {
+		return err
+	}
+
+	if err := removeDir(config.DefaultAdminDBPath); err != nil {
 		return err
 	}
 
@@ -177,6 +185,13 @@ func displaySecret(s string) string {
 
 func removeFile(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	return nil
+}
+
+func removeDir(path string) error {
+	if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove %s: %w", path, err)
 	}
 	return nil

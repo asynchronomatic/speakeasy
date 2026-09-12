@@ -10,6 +10,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	ma "github.com/multiformats/go-multiaddr"
+
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
@@ -79,7 +80,6 @@ func NewRelay(privateKey crypto.PrivKey, publicAddress []string, gate *GateKeepe
 		libp2p.Identity(privateKey),
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", relayPort),
-			//fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", relayPort),
 		),
 		libp2p.EnableHolePunching(),
 		libp2p.EnableNATService(),
@@ -92,10 +92,10 @@ func NewRelay(privateKey crypto.PrivKey, publicAddress []string, gate *GateKeepe
 
 		for _, a := range publicAddress {
 			publicQuic := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", a, relayPort))
-			publicMA = append(publicMA, publicQuic)
+			//privateQuic := ma.StringCast(fmt.Sprintf("/ip4/10.0.0.30/udp/%d/quic-v1", relayPort)) // SEB TEST
+			//publicMA = append(publicMA, publicQuic, privateQuic)
 
-			//publicTCP := ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%d", a, relayPort))
-			//publicTCP = append(publicMA, publicTCP)
+			publicMA = append(publicMA, publicQuic)
 		}
 
 		options = append(options, libp2p.AddrsFactory(func([]ma.Multiaddr) []ma.Multiaddr {
@@ -115,7 +115,9 @@ func NewRelay(privateKey crypto.PrivKey, publicAddress []string, gate *GateKeepe
 	log.Infof("NewRelay: ")
 	for _, addr := range h.Addrs() {
 		log.Infof("    %s/p2p/%s\n", addr.String(), h.ID().String())
+
 	}
+	log.Infof("Listening Addresses: %v\n", h.Addrs())
 	log.Infof("-- ")
 
 	return NewRelayOnHost(h), nil

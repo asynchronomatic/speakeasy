@@ -40,19 +40,6 @@ func (c *AdminClient) CreateInvite(req CreateInviteRequest) (*CreateInviteRespon
 	return &resp, nil
 }
 
-/*
-func (c *AdminClient) InviteLink(meshId string, lifetime time.Duration) (string, string, error) {
-	req := CreateInviteRequest{MeshId: meshId}
-	if lifetime > 0 {
-		req.LifetimeSec = uint64(lifetime.Seconds())
-	}
-	resp, err := c.CreateInvite(req)
-	if err != nil {
-		return "", "", err
-	}
-	return resp.InviteId, resp.InviteLink, nil
-}*/
-
 type DeleteInviteRequest struct {
 	Invite string
 }

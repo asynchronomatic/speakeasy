@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
 var DefaultRelayPort = 4001
@@ -111,4 +113,8 @@ func ApplyConfigDefaults(config *Config) {
 		config.Mesh.Name, _ = os.Hostname()
 	}
 	config.Proxy.Theme = NormalizeTheme(config.Proxy.Theme)
+
+	if config.Debug {
+		log.Default.SetLevel(log.LogAll)
+	}
 }

@@ -263,7 +263,7 @@ func (p *Proxy) Serve(ctx context.Context) error {
 		return err
 	}
 
-	err = p.mesh.Connect()
+	err = p.mesh.Connect(ctx)
 	if err != nil {
 		return err
 	}
