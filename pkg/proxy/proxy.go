@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"slices"
@@ -287,14 +288,26 @@ func (p *Proxy) Serve(ctx context.Context) error {
 
 	}()
 
-	proxyLink, err := autoip.OutboundIP()
+	// check to see if ip was given...
+	ipStr, portStr, err := net.SplitHostPort(p.listen)
 	if err != nil {
-		proxyLink = fmt.Sprintf("http://127.0.0.1%s", p.listen)
-	} else {
-		proxyLink = fmt.Sprintf("http://%s%s", proxyLink, p.listen)
+		log.WithName("proxy").Errorf("Failed to parse listen address: %s", err)
+		return err
+	}
+
+	proxyLink := p.listen
+	if ipStr == "" && portStr != "" {
+		proxyLink, err = autoip.OutboundIP()
+		if err != nil {
+			proxyLink = fmt.Sprintf("http://127.0.0.1%s", p.listen)
+		} else {
+			proxyLink = fmt.Sprintf("http://%s%s", proxyLink, p.listen)
+		}
 	}
 
 	log.WithName("proxy").Eventf("Proxy Service Started ( %s )", proxyLink)
+	fmt.Printf("Proxy Service Started\n")
+	fmt.Printf("   UI Management Link:  %s \n", proxyLink)
 	<-ctx.Done()
 	log.WithName("proxy").Eventf("Proxy Service Shutting Down")
 	return svr.Shutdown(context.Background())
@@ -384,7 +397,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))
-	p.mux.HandleFunc("GET /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeGetHandler)))
+	p.mux.HandleFunc("GET /api/mesh/theme", p.handle(p.themeGetHandler)) // theme does not need to be authenticated
 	p.mux.HandleFunc("POST /api/mesh/theme", p.authenticated(jsonrpc.AsAdmin(p.themeSetHandler)))
 
 	p.mux.HandleFunc("GET /api/mesh/providers", p.authenticated(jsonrpc.AsAdmin(p.providersListHandler)))

@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -29,10 +30,11 @@ const (
 )
 
 type Log struct {
+	out       io.Writer
 	fmtTime   string
 	level     uint32
 	component string
-	printer   func(level uint32, component string, msg string)
+	printer   func(out io.Writer, level uint32, component string, msg string)
 }
 
 func (l *Log) Printf(s string, v ...interface{}) {
@@ -74,13 +76,13 @@ func (l *Log) Errorf(s string, v ...interface{}) {
 
 func (l *Log) emit(level uint32, s string, v ...interface{}) {
 	if l.level&level == level {
-		l.printer(level, l.component, fmt.Sprintf(s, v...))
+		l.printer(l.out, level, l.component, fmt.Sprintf(s, v...))
 	}
 }
 
 func (l *Log) ColorPrint(color string, s string) {
 	now := time.Now() // get this early.
-	fmt.Fprintf(os.Stdout, "%s | %4s | %s%s%s", now.Format(l.fmtTime), color, l.component, s, ColorReset)
+	fmt.Fprintf(l.out, "%s | %4s | %s%s%s", now.Format(l.fmtTime), color, l.component, s, ColorReset)
 }
 
 func (l *Log) GetLevel() uint32 {
@@ -96,7 +98,7 @@ func (l *Log) SetTimeFormat(fmt string) {
 	l.fmtTime = fmt
 }
 
-func (l *Log) SetPrinter(printer func(level uint32, component string, msg string)) {
+func (l *Log) SetPrinter(printer func(out io.Writer, level uint32, component string, msg string)) {
 	l.printer = printer
 }
 
@@ -106,6 +108,7 @@ func (l *Log) SetName(name string) {
 
 func (l *Log) WithName(name string) *Log {
 	return &Log{
+		out:       l.out,
 		component: name,
 		level:     l.level,
 		fmtTime:   l.fmtTime,
@@ -115,6 +118,7 @@ func (l *Log) WithName(name string) *Log {
 
 func New(name string) *Log {
 	return &Log{
+		out:       os.Stderr,
 		component: name,
 		level:     LogNormal,
 		fmtTime:   Default.fmtTime,

@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -33,37 +34,37 @@ func ColorPrinterClassic(level uint32, component, msg string) {
 		color = ColorRed
 	}
 	now := time.Now() // get this early.
-	fmt.Fprintf(os.Stdout, "%s | %s%s%s", now.Format(DefaultTimeFormat), color, msg, ColorReset)
+	fmt.Fprintf(os.Stderr, "%s | %s%s%s", now.Format(DefaultTimeFormat), color, msg, ColorReset)
 	if !strings.HasSuffix(msg, "\n") {
-		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stderr, "\n")
 	}
 }
 
-func ColorPrinter(level uint32, component, msg string) {
+func ColorPrinter(out io.Writer, level uint32, component, msg string) {
 	color, ok := colorMap[level]
 	if !ok {
 		color = ColorRed
 	}
 	now := time.Now() // get this early.
-	fmt.Fprintf(os.Stdout, "%s | %s%-7.7s%s | %s%s%s", now.Format(DefaultTimeFormat), color, component, ColorReset, color, msg, ColorReset)
+	fmt.Fprintf(out, "%s | %s%-7.7s%s | %s%s%s", now.Format(DefaultTimeFormat), color, component, ColorReset, color, msg, ColorReset)
 	if !strings.HasSuffix(msg, "\n") {
-		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 }
 
-func BasicPrinter(level uint32, component, msg string) {
+func BasicPrinter(out io.Writer, level uint32, component, msg string) {
 	levelString, ok := levelMap[level]
 	if !ok {
 		levelString = "----"
 	}
 	now := time.Now() // get this early.
-	fmt.Fprintf(os.Stdout, "%s | %-5.5s | %-5.5s | %s", now.Format(DefaultTimeFormat), levelString, component, msg)
+	fmt.Fprintf(out, "%s | %-5.5s | %-5.5s | %s", now.Format(DefaultTimeFormat), levelString, component, msg)
 	if !strings.HasSuffix(msg, "\n") {
-		fmt.Fprintf(os.Stdout, "\n")
+		fmt.Fprintf(out, "\n")
 	}
 }
 
-func ColorPrintf(color string, s string, v ...interface{}) {
-	fmt.Fprintf(os.Stdout, "%s%s%s", color, fmt.Sprintf(s, v...), ColorReset)
+func ColorPrintf(out io.Writer, color string, s string, v ...interface{}) {
+	fmt.Fprintf(out, "%s%s%s", color, fmt.Sprintf(s, v...), ColorReset)
 }
