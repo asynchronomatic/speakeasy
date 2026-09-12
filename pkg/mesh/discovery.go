@@ -71,7 +71,7 @@ func (d *DiscoveryManager) listenForMeshEvents(ctx context.Context) {
 		case e := <-sub.Out():
 			switch ev := e.(type) {
 			case event.EvtPeerConnectednessChanged:
-				log.WithName("disc").Eventf("%T: %+v", e, ev)
+				log.WithName("disc").Debugf("%T: %+v", e, ev)
 				if ev.Connectedness == network.Connected {
 					d.postEvent(peerEvent{
 						PeerID: ev.Peer.String(),
@@ -84,7 +84,7 @@ func (d *DiscoveryManager) listenForMeshEvents(ctx context.Context) {
 					})
 				}
 			case event.EvtPeerIdentificationCompleted:
-				log.WithName("disc").Eventf("%T: %+v", e, ev)
+				log.WithName("disc").Debugf("%T: %+v", e, ev)
 				d.postEvent(peerEvent{
 					PeerID: ev.Peer.String(),
 					Status: PeerStatusUp,
@@ -107,7 +107,7 @@ func (d *DiscoveryManager) listenForMeshEvents(ctx context.Context) {
 func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
 	valid, ctrlTime, err := d.registration.Refresh()
 	if err != nil {
-		log.WithName("disc").Errorf("failed to refers registration: %v", err)
+		log.WithName("disc").Errorf("failed to refresh registration: %v", err)
 		return nil
 	}
 

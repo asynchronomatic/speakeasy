@@ -18,8 +18,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-// FIXME: move this to proxy
-const OllamaProtocol = "/ollama/0.0.1"
+const SpeakeasyProtocol = "/speakeasy/1.0.0"
 
 func CircuitAddr(relayInfo peer.AddrInfo, dest peer.ID) (ma.Multiaddr, error) {
 	// FIXME: we really should not be generating a circuit address ourselves, it should be passsed to us by a peer

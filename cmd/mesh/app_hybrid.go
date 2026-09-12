@@ -21,8 +21,6 @@ import (
  *   For standalone to work we need 3 ports forwarded
  *      4001 - relay for other peers
  *      4002 - Admin port
- *      4003 - OUR Node Port  ( this si because we NEED somebody to initiate our hole punches
- *             and we can't do this if the relay AND the node are behind the same NAT
  *
  *  TODO: walk the user though this
  */
@@ -127,7 +125,7 @@ func runHybrid() error {
 	//
 	err = cm.UpdateConfig(func(cfg *config.Config) error {
 		if cfg.Mesh.Secret == "" {
-			log.Eventf("mesh secret is empty, adding hybrid node")
+			// This is a new node, so add it to the admin directly
 			meshId, meshSecret, err := adminSvc.AddHybridNode(core.PeerNode{
 				ID:   id.String(),
 				Name: cfg.Mesh.Name,
@@ -155,6 +153,12 @@ func runHybrid() error {
 			return fmt.Errorf("could not initialize mesh: %w", err)
 		}
 
+		if dc.IsNAT() {
+			fmt.Printf("\n")
+			fmt.Printf("Warning: We detected that this host (%s) is behind a NAT (%s). This may cause issues with hole punching.\n", dc.Outbound, dc.Public)
+			fmt.Printf("  To address this please forward ports %d(udp+tcp), %d(tcp) to %s\n", cfg.Admin.RelayPort, cfg.Admin.AdminPort, dc.Outbound)
+			fmt.Printf("\n")
+		}
 		return nil
 	})
 	if err != nil {
@@ -162,6 +166,8 @@ func runHybrid() error {
 	}
 
 	p, _ := proxy.NewProxy(service, cm)
+
+	p.InformNAT = dc.IsNAT()
 	p.WithAdminController(adminClient)
 	return core.RunInterruptible(relaySvc, p)
 }

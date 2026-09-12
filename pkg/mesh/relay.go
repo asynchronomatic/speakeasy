@@ -36,13 +36,6 @@ func (r *Relay) Serve(ctx context.Context) error {
 	defer r.host.Close()
 
 	rc := relay.DefaultResources()
-	/*
-		rc.Limit = &relay.RelayLimit{
-			Duration: 30 * time.Minute,
-			Data:     1 << 30, // 1 GiB each way
-		}*/
-
-	log.Debugf("Relay resources: %+v", rc)
 
 	relaySvc, err := relay.New(r.host, relay.WithResources(rc))
 	if err != nil {
@@ -50,8 +43,7 @@ func (r *Relay) Serve(ctx context.Context) error {
 	}
 	defer relaySvc.Close()
 
-	fmt.Println("Secure Public Relay Server Started!")
-	fmt.Println("Relay Addresses:")
+	fmt.Println("Relay Server Started. Addresses:")
 	for _, addr := range r.host.Addrs() {
 		fmt.Printf("    %s/p2p/%s\n", addr.String(), r.host.ID().String())
 	}
@@ -92,9 +84,6 @@ func NewRelay(privateKey crypto.PrivKey, publicAddress []string, gate *GateKeepe
 
 		for _, a := range publicAddress {
 			publicQuic := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", a, relayPort))
-			//privateQuic := ma.StringCast(fmt.Sprintf("/ip4/10.0.0.30/udp/%d/quic-v1", relayPort)) // SEB TEST
-			//publicMA = append(publicMA, publicQuic, privateQuic)
-
 			publicMA = append(publicMA, publicQuic)
 		}
 
@@ -111,14 +100,6 @@ func NewRelay(privateKey crypto.PrivKey, publicAddress []string, gate *GateKeepe
 	if err != nil {
 		return nil, err
 	}
-
-	log.Infof("NewRelay: ")
-	for _, addr := range h.Addrs() {
-		log.Infof("    %s/p2p/%s\n", addr.String(), h.ID().String())
-
-	}
-	log.Infof("Listening Addresses: %v\n", h.Addrs())
-	log.Infof("-- ")
 
 	return NewRelayOnHost(h), nil
 }

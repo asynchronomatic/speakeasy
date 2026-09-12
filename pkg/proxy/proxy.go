@@ -65,6 +65,9 @@ type Proxy struct {
 
 	wsTicketMu sync.Mutex
 	wsTickets  map[string]time.Time
+
+	// options for settings display
+	InformNAT bool
 }
 
 func (p *Proxy) peekModel(body []byte) string {

@@ -119,7 +119,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer
 	destID := m.connectNode(peer.ID)
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			s, err := m.openStream(ctx, destID, longLived, OllamaProtocol)
+			s, err := m.openStream(ctx, destID, longLived, SpeakeasyProtocol)
 			if err != nil {
 				return nil, err
 			}
@@ -135,7 +135,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer
 func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *http.Request) {
 	security.ScrubHeaders(r, security.DefaultAllowedHeaders)
 
-	stream, err := m.NewStream(destNode.ID, true, OllamaProtocol)
+	stream, err := m.NewStream(destNode.ID, true, SpeakeasyProtocol)
 	if err != nil {
 		log.Printf("could not contact peer: %s err:%v", destNode, err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -497,6 +497,6 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater, parms ...O
 		discovery: NewDiscoveryManager(mesh, host, node, mc.MDNSEnabled, allow),
 	}
 
-	host.SetStreamHandler(OllamaProtocol, m.streamHandler)
+	host.SetStreamHandler(SpeakeasyProtocol, m.streamHandler)
 	return m, nil
 }

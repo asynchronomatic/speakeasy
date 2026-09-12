@@ -96,6 +96,10 @@ func (r *Registration) refresh(updated bool) (bool, uint64, error) {
 		if strings.Contains(err.Error(), "409") {
 			return false, 0, nil
 		}
+
+		if strings.Contains(err.Error(), "401") {
+			r.client.expires = 1
+		}
 		return false, 0, err
 	}
 	r.instanceID = resp.InstanceID

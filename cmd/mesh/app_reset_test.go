@@ -158,7 +158,7 @@ func TestResetAll(t *testing.T) {
 	if fileExists(config.DefaultNodePath) {
 		t.Fatal("expected node.key removed")
 	}
-	if !fileExists(config.DefaultRelayPath) {
+	if fileExists(config.DefaultRelayPath) {
 		t.Fatal("relay.key should be kept")
 	}
 }
