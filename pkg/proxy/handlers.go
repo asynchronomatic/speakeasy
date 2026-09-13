@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -23,6 +24,39 @@ func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 
 	d := time.Since(start).Round(time.Millisecond)
 	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, security.RequestMethod(r), security.RequestPath(r))
+}
+
+type openaiError struct {
+	Error struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Param   any    `json:"param"`
+		Code    string `json:"code"`
+	} `json:"error"`
+}
+
+// authenticateInference token based protection for inference api endpoints (/v1/)
+func (p *Proxy) authenticateInference(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, status := p.inferenceAuth.DoAuth(w, r); status != http.StatusOK {
+			if _, status = p.auth.DoAuth(w, r); status != http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest) // 401, 403, etc. — must come first
+				json.NewEncoder(w).Encode(openaiError{Error: struct {
+					Message string `json:"message"`
+					Type    string `json:"type"`
+					Param   any    `json:"param"`
+					Code    string `json:"code"`
+				}{
+					Message: "Incorrect API key provided",
+					Type:    "invalid_request_error",
+					Code:    "invalid_api_key",
+				}})
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 func (p *Proxy) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {

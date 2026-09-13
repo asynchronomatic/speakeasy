@@ -209,14 +209,6 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 }
 
 func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
-	/* TODO: we will authenticate it with inference tokens
-	if p.auth != nil {
-		if _, status := p.auth.DoAuth(w, r); status != http.StatusOK {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-	}*/
-
 	p.proxyModelRequest(w, r, false)
 }
 
@@ -387,11 +379,11 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	// Routes serviced by the proxy api locally
 	// OpenAI APIs
 	// Per spec we want to leave these open like ollama
-	p.mux.HandleFunc("GET /v1/models", p.handle(p.openaiListModelsHandler))
-	p.mux.HandleFunc("/v1/chat/completions", p.localProxyRequest)
-	p.mux.HandleFunc("/v1/responses", p.localProxyRequest)
-	p.mux.HandleFunc("/v1/embeddings", p.localProxyRequest)
-	p.mux.HandleFunc("/v1/messages", p.localProxyRequest) // anthropic
+	p.mux.HandleFunc("GET /v1/models", p.authenticateInference(p.handle(p.openaiListModelsHandler)))
+	p.mux.HandleFunc("/v1/chat/completions", p.authenticateInference(p.localProxyRequest))
+	p.mux.HandleFunc("/v1/responses", p.authenticateInference(p.localProxyRequest))
+	p.mux.HandleFunc("/v1/embeddings", p.authenticateInference(p.localProxyRequest))
+	p.mux.HandleFunc("/v1/messages", p.authenticateInference(p.localProxyRequest)) // anthropic
 
 	// Secure endpoint
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
@@ -411,6 +403,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.mux.HandleFunc("GET /api/mesh/settings", p.authenticated(jsonrpc.AsAdmin(p.settingsGetHandler)))
 	p.mux.HandleFunc("POST /api/mesh/settings", p.authenticated(jsonrpc.AsAdmin(p.settingsSetHandler)))
 
+	//p.mux.HandleFunc("GET /api/proxy/inference/chat/completions", p.inferenceChatCompletions)
 	p.mux.HandleFunc("GET /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokensList)))
 	p.mux.HandleFunc("POST /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenCreate)))
 	p.mux.HandleFunc("DELETE /api/proxy/inference/tokens/{id}", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenDelete)))
