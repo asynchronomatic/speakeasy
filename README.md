@@ -16,9 +16,9 @@ No actual data/llm/etc traffic uses the relay forwarding path.
 ## Screenshots
 First some screenshots!
 
-<div style="display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px;">
-  <img src="docs/mesh_view.png" width="500" alt="Screenshot 1">
-  <img src="docs/model_view.png" width="500" alt="Screenshot 2">
+<div style="display: flex; overflow-x: auto; gap: 12px; max-width: 100%; white-space: nowrap; padding-bottom: 10px;">
+  <img src="docs/mesh_view.png" width="500" alt="Screenshot 1" style="flex: 0 0 auto;">
+  <img src="docs/model_view.png" width="500" alt="Screenshot 2" style="flex: 0 0 auto;">
 </div>
 
 
