@@ -22,6 +22,8 @@ var testDefaultConfigYAML = `
 proxy:
   listen: ":0"
   password: ` + ProxyLoginHash + `
+  inference_tokens:
+    insecure: true
 admin:
   secret: s 
 mesh:

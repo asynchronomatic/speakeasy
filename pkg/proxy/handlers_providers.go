@@ -318,6 +318,7 @@ func (p *Proxy) inferenceTokensList(rpc *jsonrpc.RPC) error {
 type generalSettings struct {
 	AllowPrivateBackends bool `json:"allow_private_backends"`
 	MDNSEnabled          bool `json:"mdns_enabled"`
+	IsBehindNAT          bool `json:"is_behind_nat"`
 }
 
 func (p *Proxy) settingsGetHandler(rpc *jsonrpc.RPC) error {
@@ -325,7 +326,7 @@ func (p *Proxy) settingsGetHandler(rpc *jsonrpc.RPC) error {
 
 	err := p.cm.ReadConfig(func(cfg *config.Config) error {
 		resp.AllowPrivateBackends = cfg.Proxy.AllowPrivateBackends
-		//resp.MDNSEnabled = cfg.Mesh.MDNSEnabled
+		resp.IsBehindNAT = p.InformNAT
 		return nil
 	})
 	if err != nil {

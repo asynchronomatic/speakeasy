@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -17,8 +18,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
 
-// FIXME: move this to proxy
-const OllamaProtocol = "/ollama/0.0.1"
+const SpeakeasyProtocol = "/speakeasy/1.0.0"
 
 func CircuitAddr(relayInfo peer.AddrInfo, dest peer.ID) (ma.Multiaddr, error) {
 	// FIXME: we really should not be generating a circuit address ourselves, it should be passsed to us by a peer
@@ -119,9 +119,10 @@ func ConnKind(c network.Conn) string {
 	return "direct"
 }
 
-func WaitForAddress(h host.Host, once bool) string {
+func WaitForAddress(ctx context.Context, h host.Host, tries int, interval time.Duration) error {
+	fmt.Printf("Waiting for mesh connection.. (This can take a few minutes)\n")
 	for {
-		log.WithName("mesh").Debugf("Waiting for circuit addresses\n")
+		log.WithName("mesh").Debugf("  HAVE: %+v\n", h.Addrs())
 		hasCircuit := ""
 		for _, a := range h.Addrs() {
 			if strings.HasSuffix(a.String(), "p2p-circuit") {
@@ -134,13 +135,21 @@ func WaitForAddress(h host.Host, once bool) string {
 			for _, a := range h.Addrs() {
 				log.Debugf("  %s\n", a)
 			}
-			return hasCircuit
+
+			fmt.Printf("Mesh connection successful!\n")
+			return nil
 		}
 
-		if once {
-			return ""
+		if tries <= 0 {
+			return fmt.Errorf("failed to establish mesh connection")
 		}
-		time.Sleep(5 * time.Second)
+		tries--
+
+		select {
+		case <-time.After(interval):
+		case <-ctx.Done():
+			return fmt.Errorf("mesh connection canceled")
+		}
 	}
 }
 

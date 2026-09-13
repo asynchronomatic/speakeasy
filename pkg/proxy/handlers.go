@@ -25,6 +25,19 @@ func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
 	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, security.RequestMethod(r), security.RequestPath(r))
 }
 
+// authenticateInference token based protection for inference api endpoints (/v1/)
+func (p *Proxy) authenticateInference(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, status := p.inferenceAuth.DoAuth(w, r); status != http.StatusOK {
+			if _, status = p.auth.DoAuth(w, r); status != http.StatusOK {
+				writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "invalid_api_key", "Incorrect API key provided", nil)
+				return
+			}
+		}
+		next(w, r)
+	}
+}
+
 func (p *Proxy) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

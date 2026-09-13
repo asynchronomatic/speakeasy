@@ -65,7 +65,7 @@ func modelNotFoundMessage(model string) string {
 
 func writeModelNotFound(w http.ResponseWriter, r *http.Request, model string) {
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
-		writeOpenAIError(w, http.StatusNotFound, "invalid_request_error", "model_not_found", modelNotFoundMessage(model), nil)
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "model_not_found", modelNotFoundMessage(model), nil)
 		return
 	}
 	msg := "model not found"

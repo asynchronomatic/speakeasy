@@ -21,8 +21,8 @@ func postModel(t *testing.T, p *Proxy, path, model string) *httptest.ResponseRec
 func TestChatCompletionsUnknownModelOpenAIError(t *testing.T) {
 	p := testProxy(t)
 	rec := postModel(t, p, "/v1/chat/completions", "nope-model")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status %d want 404", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400", rec.Code)
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
 		t.Fatalf("content-type %q", ct)
@@ -51,8 +51,8 @@ func TestResponsesUnknownModelOpenAIError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status %d want 404", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d want 400", rec.Code)
 	}
 	var got openaiAPIErrorBody
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -72,7 +72,7 @@ func TestMeshUnknownModelOpenAIError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	p.MeshServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
+	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d want 404", rec.Code)
 	}
 	var got openaiAPIErrorBody

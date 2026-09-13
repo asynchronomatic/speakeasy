@@ -9,7 +9,6 @@ import (
 	"github.com/jxskiss/base62"
 	"github.com/negrel/assert"
 
-	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
@@ -39,7 +38,6 @@ func ParseInferenceToken(authToken string) (string, []byte, error) {
 	}
 
 	key := parts[0]
-
 	secret, err := base62.DecodeString(parts[1])
 	if err != nil {
 		return "", nil, ErrInvalidInferenceToken
@@ -57,7 +55,6 @@ func (a *InferenceAuth) checkToken(token string) (*Properties, int) {
 	a.lock.RLock()
 	stored, found := a.tokens[key]
 	a.lock.RUnlock()
-	log.Printf("checking token %s:%v", key, found)
 	if !found {
 		security.DummySecretMatchEx(secret)
 		return nil, http.StatusUnauthorized

@@ -1,6 +1,7 @@
 package testable
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
@@ -22,7 +23,7 @@ func (t *MeshNode) Node() core.PeerNode {
 	return t.node
 }
 
-func (t *MeshNode) Connect() error {
+func (t *MeshNode) Connect(ctx context.Context) error {
 	return t.orchestrator.Connect(t)
 }
 

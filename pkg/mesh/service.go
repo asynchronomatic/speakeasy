@@ -119,7 +119,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer
 	destID := m.connectNode(peer.ID)
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			s, err := m.openStream(ctx, destID, longLived, OllamaProtocol)
+			s, err := m.openStream(ctx, destID, longLived, SpeakeasyProtocol)
 			if err != nil {
 				return nil, err
 			}
@@ -135,7 +135,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer
 func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *http.Request) {
 	security.ScrubHeaders(r, security.DefaultAllowedHeaders)
 
-	stream, err := m.NewStream(destNode.ID, true, OllamaProtocol)
+	stream, err := m.NewStream(destNode.ID, true, SpeakeasyProtocol)
 	if err != nil {
 		log.Printf("could not contact peer: %s err:%v", destNode, err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -292,11 +292,14 @@ func (m *Service) SignalUpdate() {
 }
 
 // Connect this service to the mesh
-func (m *Service) Connect() error {
+func (m *Service) Connect(ctx context.Context) error {
 	log.WithName("mesh").Infof("My PeerNode: %s\n", m.node)
 
 	// FIXME: if the node visibility is forced public it will never see a circuit address
-	WaitForAddress(m.h, false)
+	err := WaitForAddress(ctx, m.h, 24, time.Second*2)
+	if err != nil {
+		return err
+	}
 
 	// start the discovery subsystem
 	go func() {
@@ -309,7 +312,19 @@ func (m *Service) Disconnect() error {
 	return nil
 }
 
-func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service, error) {
+type optionValues struct {
+	relayAddress []string
+}
+
+type Option func(*optionValues)
+
+func WithRelayAddrs(addr []string) Option {
+	return func(opt *optionValues) {
+		opt.relayAddress = addr
+	}
+}
+
+func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater, parms ...Option) (*Service, error) {
 	mesh, err := api.NewClient(mc.Address, mc.Secret).Mesh("default")
 	if err != nil {
 		return nil, fmt.Errorf("could open mesh admin client err:%v", err)
@@ -331,15 +346,22 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service,
 		return nil, fmt.Errorf("could not login to mesh err:%v", err)
 	}
 
+	userOptions := optionValues{}
+
 	// Retrieve the bootstrap address of our public relays
-	btAddress, err := mesh.GetAddress()
+	userOptions.relayAddress, err = mesh.GetAddress()
 	if err != nil {
 		return nil, err
 	}
 
-	log.WithName("svc").Debugf("Bootstrap Addresses: %+v\n", btAddress)
+	//  Check for forced overrides and set them as needed
+	for _, parm := range parms {
+		parm(&userOptions)
+	}
 
-	relayInfo := PeerAddrInfoFromMulti(btAddress)
+	log.WithName("svc").Debugf("Bootstrap Addresses: %+v\n", userOptions.relayAddress)
+
+	relayInfo := PeerAddrInfoFromMulti(userOptions.relayAddress)
 
 	allow := NewPeerAllowList()
 	allow.Pin(nodeID)
@@ -362,14 +384,13 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service,
 		gater = NewGateKeeper(allow)
 	}
 
-	// FIXME: for limited deploys, we only ask for one public relay
+	// NOTE: for limited deploys, we only ask for one public relay
 	log.WithName("mesh").Debugf("observedaddrs.ActivationThresh: %d", observedaddrs.ActivationThresh)
 	opts := []libp2p.Option{
 		libp2p.Identity(key),
 		libp2p.ListenAddrStrings(
-			// Note: App side does not need a specific port ( this can be set in config to 0 )
+			// Note: App side does not need a specific port unless running in hybrid mode
 			fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", mc.Port),
-			//fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", mc.AppPort),
 			"/p2p-circuit",
 		),
 		libp2p.EnableRelay(),
@@ -386,36 +407,56 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service,
 		opts = append(opts, libp2p.ConnectionGater(gater))
 	}
 
+	dc, err := autoip.GetPublicAddress()
+	if err != nil {
+		log.WithName("mesh").Errorf("failed to get public address err:%v", err)
+		return nil, err
+	}
+
 	isPrivate := true
 	switch mc.PublicAddress {
 	case "auto":
-		if dc, err := autoip.GetPublicAddress(); err == nil {
-			if dc.IsPublic() {
-				mc.PublicAddress = dc.Public
-				isPrivate = false
-			}
+		if dc.IsPublic() {
+			isPrivate = false
 		}
 	default:
+		dc.Public = mc.PublicAddress
 		isPrivate = false
 	}
+
 	if mc.ForcePrivate {
 		isPrivate = true
 	}
 
 	if isPrivate {
-		log.WithName("mesh").Debugf("Node ForceReachabilityPrivate")
+		log.WithName("mesh").Eventf("forcing private reachability")
 		opts = append(opts, libp2p.ForceReachabilityPrivate())
 	} else {
-		log.WithName("mesh").Debugf("Node ForceReachabilityPubic Address: %s", mc.PublicAddress)
+		log.WithName("mesh").Eventf("forcing public reachability")
 		opts = append(opts, libp2p.ForceReachabilityPublic())
-
-		// Advertise the public endpoint as well
-		pubTCP := ma.StringCast(fmt.Sprintf("/ip4/%s/tcp/%d", mc.PublicAddress, mc.Port))
-		pubUDP := ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%d/quic-v1", mc.PublicAddress, mc.Port))
-		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			return append(addrs, pubTCP, pubUDP)
-		}))
 	}
+
+	opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		var err error
+		udpPort := fmt.Sprintf("%d", mc.Port)
+		if mc.Port == 0 {
+			for _, a := range addrs {
+				udpPort, err = a.ValueForProtocol(ma.P_UDP)
+				if err != nil {
+					continue
+				}
+				break
+			}
+		}
+
+		if dc.Public != "" {
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%s/quic-v1", dc.Public, udpPort)))
+		}
+		if dc.Outbound != "" {
+			addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/%s/udp/%s/quic-v1", dc.Outbound, udpPort)))
+		}
+		return addrs
+	}))
 
 	host, err := libp2p.New(opts...)
 	if err != nil {
@@ -456,6 +497,6 @@ func NewService(mc *config.MeshConfig, gater connmgr.ConnectionGater) (*Service,
 		discovery: NewDiscoveryManager(mesh, host, node, mc.MDNSEnabled, allow),
 	}
 
-	host.SetStreamHandler(OllamaProtocol, m.streamHandler)
+	host.SetStreamHandler(SpeakeasyProtocol, m.streamHandler)
 	return m, nil
 }

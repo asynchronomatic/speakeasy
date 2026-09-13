@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -48,7 +49,7 @@ type UpdateHandlerFunc func(peer PeerNode, removed bool) error
 
 type MeshServiceProvider interface {
 	Node() PeerNode
-	Connect() error
+	Connect(ctx context.Context) error
 	Disconnect() error
 	ClientForPeer(dest PeerNode, longLived bool) jsonrpc.Doer // Doer probably belongs in a common package
 	ProxyToNode(dest PeerNode, w http.ResponseWriter, r *http.Request)

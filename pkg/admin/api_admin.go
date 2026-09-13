@@ -17,6 +17,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 )
@@ -402,4 +403,30 @@ func (s *Server) adminDeleteInviteLink(ctx *jsonrpc.RPC) error {
 	}
 
 	return ctx.ReplyObject(&api.DeleteInviteRequest{Invite: inviteID})
+}
+
+func (s *Server) AddHybridNode(node core.PeerNode) (string, string, error) {
+	secret, err := newNodeLoginSecret()
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := hashLoginSecret(secret)
+	if err != nil {
+		return "", "", err
+	}
+
+	nodeKey := meshNodeKVKey("default", node.ID)
+
+	if err := s.kv.Put(nodeKey, meshNodeRecord{
+		NodeID:       node.ID,
+		Name:         node.Name,
+		AddedAt:      time.Now().UTC(),
+		InvitedAs:    "Bootstrap",
+		PasswordHash: hash,
+	}); err != nil {
+		return "", "", err
+	}
+
+	s.acl.Add(node.ID)
+	return "default", secret, nil
 }
