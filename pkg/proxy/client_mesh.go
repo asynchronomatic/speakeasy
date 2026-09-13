@@ -38,12 +38,14 @@ func (c *MeshClient) GetModelsMesh() (map[string]modeldex.ModelRoute, error) {
 }
 
 type NodeStatus struct {
-	Name      string
-	PeerID    string
-	Type      string
-	Reachable bool
-	Models    []string
-	Mesh      *core.MeshInfo
+	Name         string
+	PeerID       string
+	Type         string
+	Reachable    bool
+	Models       []string
+	Mesh         *core.MeshInfo
+	StatsIngress Metric // requests coming to us from this node
+	StatsEgress  Metric // requests we sent to this node
 }
 
 type NodeStatusResponse struct {

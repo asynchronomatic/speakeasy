@@ -255,28 +255,6 @@ func TestExistingJoinWarning(t *testing.T) {
 	}
 }
 
-func TestAdminControllerAddr(t *testing.T) {
-	cfg := &config.Config{}
-	if _, _, ok := adminControllerAddr(cfg); ok {
-		t.Fatal("empty config should not attach admin")
-	}
-	cfg.Admin.Secret = "sekrit"
-	if _, _, ok := adminControllerAddr(cfg); ok {
-		t.Fatal("secret without address should not attach")
-	}
-	cfg.Admin.Address = "http://127.0.0.1:4002"
-	addr, secret, ok := adminControllerAddr(cfg)
-	if !ok || addr != "http://127.0.0.1:4002" || secret != "sekrit" {
-		t.Fatalf("got %q %q %v", addr, secret, ok)
-	}
-	cfg.Admin.Address = ""
-	cfg.Mesh.Address = "http://10.0.0.30:4002"
-	addr, _, ok = adminControllerAddr(cfg)
-	if !ok || addr != "http://10.0.0.30:4002" {
-		t.Fatalf("mesh fallback %q %v", addr, ok)
-	}
-}
-
 func TestRunJoinRequiresURL(t *testing.T) {
 	if err := runJoin(""); err == nil {
 		t.Fatal("expected usage error")

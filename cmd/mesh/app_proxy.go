@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/asynchronomatic/speakeasy/api"
@@ -33,12 +34,7 @@ func proxyStart() error {
 			return fmt.Errorf("could not initialize mesh: %w", err)
 		}
 
-		addr, secret, ok := adminControllerAddr(cfg)
-		if !ok {
-			return nil
-		}
-
-		admin = api.NewClient(addr, secret).Admin()
+		admin, _ = adminControllerFromEnv(cfg.Admin.Address)
 		return nil
 	})
 	if err != nil {
@@ -47,7 +43,6 @@ func proxyStart() error {
 
 	p, _ := proxy.NewProxy(service, cm)
 	p.WithAdminController(admin)
-
 	return core.RunInterruptible(p)
 }
 
@@ -64,17 +59,22 @@ func proxyConfigSetPassword() error {
 	})
 }
 
-func adminControllerAddr(config *config.Config) (addr, secret string, ok bool) {
-	secret = strings.TrimSpace(config.Admin.Secret)
+func adminControllerFromEnv(address string) (client *api.AdminClient, ok bool) {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return nil, false
+	}
+
+	secret := os.Getenv("SPEAKEASY_ADMIN_SERVER_SECRET")
 	if secret == "" {
-		return "", "", false
+		return nil, false
 	}
-	addr = strings.TrimSpace(config.Admin.Address)
-	if addr == "" {
-		addr = strings.TrimSpace(config.Mesh.Address)
+
+	admin := api.NewClient(address, secret).Admin()
+	_, err := admin.ListNodes()
+	if err != nil {
+		return nil, false
 	}
-	if addr == "" {
-		return "", "", false
-	}
-	return addr, secret, true
+
+	return admin, true
 }

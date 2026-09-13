@@ -67,6 +67,8 @@ type Proxy struct {
 
 	// options for settings display
 	InformNAT bool
+
+	metrics *Metrics
 }
 
 func (p *Proxy) peekModel(body []byte) string {
@@ -152,7 +154,9 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 	}
 
 	log.Debugf(" -- Servicing via mesh node: %s\n", destNode)
+	start := time.Now()
 	p.mesh.ProxyToNode(*destNode, w, r)
+	p.metrics.ObserveEgress(destNode.ID, time.Since(start))
 }
 
 func rejectProviderRedirect(resp *http.Response) error {
@@ -212,7 +216,9 @@ func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) meshProxyRequest(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	p.proxyModelRequest(w, r, true)
+	p.metrics.ObserveIngress(r.RemoteAddr, time.Since(start))
 }
 
 // ServeHTTP serves an Open AI compatible api for chat completions
@@ -362,6 +368,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 		inferenceAuth: inferenceAuth,
 		wsTickets:     make(map[string]time.Time),
 		cm:            cm,
+		metrics:       NewMetrics(),
 	}
 
 	//-------------------------------------------

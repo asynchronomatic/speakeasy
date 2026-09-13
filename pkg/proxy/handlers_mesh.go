@@ -68,6 +68,8 @@ func (p *Proxy) meshMembers(rpc *jsonrpc.RPC) error {
 				status.Reachable = false
 			}
 			status.Type = "peer"
+			status.StatsIngress = p.metrics.GetIngress(peer.ID)
+			status.StatsEgress = p.metrics.GetEgress(peer.ID)
 		}
 
 		if status.Mesh != nil {

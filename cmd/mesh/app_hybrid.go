@@ -139,13 +139,6 @@ func runHybrid() error {
 			cfg.Mesh.MeshId = meshId
 		}
 
-		addr, secret, ok := adminControllerAddr(cfg)
-		if !ok {
-			return nil
-		}
-
-		adminClient = api.NewClient(addr, secret).Admin()
-
 		service, err = mesh.NewService(&cfg.Mesh, nil, mesh.WithRelayAddrs(
 			[]string{fmt.Sprintf("/ip4/%s/udp/%d/quic-v1/p2p/%s", dc.Outbound, cfg.Admin.RelayPort, relaySvc.ID())}))
 
@@ -159,6 +152,8 @@ func runHybrid() error {
 			fmt.Printf("  To address this please forward ports %d(udp+tcp), %d(tcp) to %s\n", cfg.Admin.RelayPort, cfg.Admin.AdminPort, dc.Outbound)
 			fmt.Printf("\n")
 		}
+
+		adminClient, _ = adminControllerFromEnv(cfg.Admin.Address)
 		return nil
 	})
 	if err != nil {
