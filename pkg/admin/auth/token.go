@@ -9,7 +9,7 @@ import (
 	"github.com/jxskiss/base62"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 const SessionTokenPrefix = "mesh-"
@@ -33,7 +33,7 @@ func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
 }
 
 func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
-	token := security.GetToken(r)
+	token := secrets.GetToken(r)
 	if token == "" {
 		return nil, http.StatusUnauthorized
 	}
@@ -55,7 +55,7 @@ func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties,
 	u, ok := a.tokens["admin"]
 	a.lock.Unlock()
 	if !ok {
-		security.DummySecretMatch(token)
+		secrets.DummySecretMatch(token)
 		return nil, http.StatusUnauthorized
 	}
 

@@ -19,7 +19,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 // testHTTPClient disables keep-alives so sequential httptest servers on macOS
@@ -42,7 +42,7 @@ func newAdminTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
 	t.Setenv("ADMIN_DB_PATH", filepath.Join(t.TempDir(), "admin.jkv"))
 
-	secret := security.MustPasswordHashAndEncodeBase62("test-secret")
+	secret := secrets.MustPasswordHashAndEncodeBase62("test-secret")
 
 	s, err := NewServer(":0", secret)
 	if err != nil {

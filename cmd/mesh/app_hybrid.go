@@ -14,7 +14,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 /*
@@ -58,8 +58,8 @@ func runHybrid() error {
 
 		err = cm.UpdateConfig(func(cfg *config.Config) error {
 			cfg.Admin.Address = fmt.Sprintf("http://%s:%d", dc.Public, config.DefaultAdminPort)
-			cfg.Admin.Secret = security.MustPasswordHashAndEncodeBase62(pw)
-			cfg.Proxy.Password = security.MustPasswordHashAndEncodeBase62(pw)
+			cfg.Admin.Secret = secrets.MustPasswordHashAndEncodeBase62(pw)
+			cfg.Proxy.Password = secrets.MustPasswordHashAndEncodeBase62(pw)
 			cfg.Mesh.MDNSEnabled = true
 			cfg.Mesh.Address = cfg.Admin.Address
 			cfg.Mesh.ForcePrivate = true

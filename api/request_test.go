@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func TestIsJSONContentType(t *testing.T) {
@@ -54,25 +54,25 @@ func TestRequireSameOrigin(t *testing.T) {
 	same := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4080/api/mesh/providers", nil)
 	same.Host = "127.0.0.1:4080"
 	same.Header.Set("Origin", "http://127.0.0.1:4080")
-	if err := security.RequireSameOrigin(same); err != nil {
+	if err := secrets.RequireSameOrigin(same); err != nil {
 		t.Fatalf("same origin: %v", err)
 	}
 
 	none := httptest.NewRequest(http.MethodPost, "/api/mesh/providers", nil)
-	if err := security.RequireSameOrigin(none); err != nil {
+	if err := secrets.RequireSameOrigin(none); err != nil {
 		t.Fatalf("no origin: %v", err)
 	}
 
 	get := httptest.NewRequest(http.MethodGet, "/api/mesh/providers", nil)
 	get.Header.Set("Origin", "http://evil.example")
-	if err := security.RequireSameOrigin(get); err != nil {
+	if err := secrets.RequireSameOrigin(get); err != nil {
 		t.Fatalf("safe method: %v", err)
 	}
 
 	cross := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4080/api/mesh/providers", nil)
 	cross.Host = "127.0.0.1:4080"
 	cross.Header.Set("Origin", "http://evil.example")
-	err := security.RequireSameOrigin(cross)
+	err := secrets.RequireSameOrigin(cross)
 	if err == nil {
 		t.Fatal("expected origin mismatch")
 	}
@@ -87,19 +87,19 @@ func TestOriginOK(t *testing.T) {
 	same := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
 	same.Host = "127.0.0.1:4080"
 	same.Header.Set("Origin", "http://127.0.0.1:4080")
-	if !security.OriginOK(same) {
+	if !secrets.OriginOK(same) {
 		t.Fatal("same origin GET should be allowed")
 	}
 
 	none := httptest.NewRequest(http.MethodGet, "/api/v.1/refresh/websocket", nil)
-	if !security.OriginOK(none) {
+	if !secrets.OriginOK(none) {
 		t.Fatal("missing origin should be allowed")
 	}
 
 	cross := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:4080/api/v.1/refresh/websocket", nil)
 	cross.Host = "127.0.0.1:4080"
 	cross.Header.Set("Origin", "http://evil.example")
-	if security.OriginOK(cross) {
+	if secrets.OriginOK(cross) {
 		t.Fatal("cross origin GET should be denied")
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func bearerReq(token string) *http.Request {
@@ -33,7 +33,7 @@ func TestAddUserHashesPassword(t *testing.T) {
 func TestDoAuthAcceptsPassword(t *testing.T) {
 	a := NewTokenAuth()
 
-	err := a.AddToken(security.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
 	assert.NoError(t, err)
 	got, code := a.DoAuth(nil, bearerReq("secret"))
 	assert.Equal(t, http.StatusOK, code)
@@ -44,7 +44,7 @@ func TestDoAuthAcceptsPassword(t *testing.T) {
 
 func TestDoAuthRejectsWrongPassword(t *testing.T) {
 	a := NewTokenAuth()
-	err := a.AddToken(security.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
 	assert.NoError(t, err)
 	got, code := a.DoAuth(nil, bearerReq("wrong"))
 	assert.Equal(t, http.StatusUnauthorized, code)
@@ -53,7 +53,7 @@ func TestDoAuthRejectsWrongPassword(t *testing.T) {
 
 func TestDoAuthRejectsEmptyBearer(t *testing.T) {
 	a := NewTokenAuth()
-	err := a.AddToken(security.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
 	assert.NoError(t, err)
 	_, code := a.DoAuth(nil, httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.Equal(t, http.StatusUnauthorized, code)

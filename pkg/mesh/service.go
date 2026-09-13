@@ -19,14 +19,13 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/observedaddrs"
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/asynchronomatic/speakeasy/pkg/config"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
-	"github.com/asynchronomatic/speakeasy/pkg/log"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
-
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
+	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
+	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func init() {
@@ -133,7 +132,7 @@ func (m *Service) ClientForPeer(peer core.PeerNode, longLived bool) jsonrpc.Doer
 }
 
 func (m *Service) ProxyToNode(destNode core.PeerNode, w http.ResponseWriter, r *http.Request) {
-	security.ScrubHeaders(r, security.DefaultAllowedHeaders)
+	secrets.ScrubHeaders(r, secrets.DefaultAllowedHeaders)
 
 	stream, err := m.NewStream(destNode.ID, true, SpeakeasyProtocol)
 	if err != nil {

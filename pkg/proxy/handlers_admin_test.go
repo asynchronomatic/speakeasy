@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 var ProxyLoginSecret = "test-password"
-var ProxyLoginHash = security.MustPasswordHashAndEncodeBase62(ProxyLoginSecret)
+var ProxyLoginHash = secrets.MustPasswordHashAndEncodeBase62(ProxyLoginSecret)
 
 var testDefaultConfigYAML = `
 proxy:

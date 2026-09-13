@@ -1,4 +1,4 @@
-package security
+package secrets
 
 import (
 	"crypto/rand"
@@ -21,10 +21,6 @@ func init() {
 
 func DummySecretMatch(secret string) {
 	_ = bcrypt.CompareHashAndPassword(DummyHash, []byte(secret))
-}
-
-func PasswordHash(password string) ([]byte, error) {
-	return bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 }
 
 func PasswordCompare(stored, received []byte) error {

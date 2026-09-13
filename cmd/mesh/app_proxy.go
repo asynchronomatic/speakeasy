@@ -9,7 +9,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func proxyStart() error {
@@ -59,7 +59,7 @@ func proxyConfigSetPassword() error {
 
 	cm := config.NewManager(config.DefaultConfigPath)
 	return cm.UpdateConfig(func(cfg *config.Config) error {
-		cfg.Proxy.Password = security.MustPasswordHashAndEncodeBase62(pw)
+		cfg.Proxy.Password = secrets.MustPasswordHashAndEncodeBase62(pw)
 		return nil
 	})
 }

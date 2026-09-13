@@ -8,7 +8,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func runAdminAndRelay() error {
@@ -69,7 +69,7 @@ func adminConfigSetPassword() error {
 
 	cm := config.NewManager(config.DefaultConfigPath)
 	return cm.UpdateConfig(func(cfg *config.Config) error {
-		cfg.Admin.Secret = security.MustPasswordHashAndEncodeBase62(pw)
+		cfg.Admin.Secret = secrets.MustPasswordHashAndEncodeBase62(pw)
 		return nil
 	})
 }
