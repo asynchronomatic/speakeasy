@@ -302,6 +302,8 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 		return err
 	}
 
+	s.acl.Add(req.NodeID)
+
 	return ctx.ReplyObject(&api.NodeLoginResponse{
 		Token:   token,
 		NodeID:  req.NodeID,

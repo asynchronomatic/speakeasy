@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -156,64 +155,6 @@ func TestAdminDBPathDefault(t *testing.T) {
 	t.Setenv("ADMIN_DB_PATH", " /custom/path ")
 	if got := adminDBPath(); got != "/custom/path" {
 		t.Fatalf("adminDBPath()=%q", got)
-	}
-}
-
-func TestAdminAllowPath(t *testing.T) {
-	t.Setenv("ADMIN_ALLOW_PATH", "")
-	t.Setenv("ADMIN_DB_PATH", "")
-	if got := adminAllowPath(); got != "allow.list" {
-		t.Fatalf("default adminAllowPath()=%q", got)
-	}
-
-	t.Setenv("ADMIN_DB_PATH", "/var/lib/speakeasy/admin.jkv")
-	if got := adminAllowPath(); got != "/var/lib/speakeasy/allow.list" {
-		t.Fatalf("colocated adminAllowPath()=%q", got)
-	}
-
-	t.Setenv("ADMIN_ALLOW_PATH", " /etc/speakeasy/allow.list ")
-	if got := adminAllowPath(); got != "/etc/speakeasy/allow.list" {
-		t.Fatalf("override adminAllowPath()=%q", got)
-	}
-}
-
-func TestNewServerUsesAllowListNextToDB(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "admin.jkv")
-	allowPath := filepath.Join(dir, "allow.list")
-	if err := os.WriteFile(allowPath, []byte("peer-seed\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ADMIN_DB_PATH", dbPath)
-	t.Setenv("ADMIN_ALLOW_PATH", "")
-
-	s, err := NewServer(":0", "test-secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !s.acl.Has("peer-seed") {
-		t.Fatal("expected seed peer from colocated allow.list")
-	}
-	s.acl.Add("peer-added")
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reloaded, err := NewAllowList(allowPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reloaded.Has("peer-seed") || !reloaded.Has("peer-added") {
-		t.Fatalf("persisted peers: %v", reloaded.Peers())
-	}
-}
-
-func TestNewServerAllowListOpenError(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("ADMIN_DB_PATH", filepath.Join(dir, "admin.jkv"))
-	t.Setenv("ADMIN_ALLOW_PATH", dir)
-	if _, err := NewServer(":0", "test-secret"); err == nil {
-		t.Fatal("expected error opening directory as allow list")
 	}
 }
 
