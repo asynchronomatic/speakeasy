@@ -111,6 +111,55 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestUIModelsListsLocalPublicAndPrivate(t *testing.T) {
+	cm := testable.MustConfigManager(`proxy:
+  listen: ":0"
+  password: ` + ProxyLoginHash + `
+mesh:
+  address: http://10.0.0.1:4002
+providers:
+- id: local
+  type: test
+  base_url: http://127.0.0.1:1
+  private: false
+  model_discovery: whitelist
+  models:
+  - model: public-model
+    private: false
+  - model: secret-model
+    private: true
+`)
+	p := newTestProxy(t, cm)
+	var resp UIModelsResponse
+	err := doProxyJSON(t, p, http.MethodGet, "/api/mesh/models", nil, &resp)
+	assert.NoError(t, err)
+
+	byName := map[string]UIModel{}
+	for _, m := range resp.Models {
+		byName[m.Name] = m
+	}
+	pub, ok := byName["public-model"]
+	assert.True(t, ok)
+	sec, ok := byName["secret-model"]
+	assert.True(t, ok)
+	assert.True(t, pub.Local)
+	assert.False(t, pub.Private)
+	assert.True(t, sec.Local)
+	assert.True(t, sec.Private)
+
+	self := p.mesh.Node().ID
+	hasSelf := func(m UIModel) bool {
+		for _, pr := range m.Providers {
+			if pr.ID == self {
+				return true
+			}
+		}
+		return false
+	}
+	assert.True(t, hasSelf(pub))
+	assert.True(t, hasSelf(sec))
+}
+
 func TestMeshAPIRequiresLogin(t *testing.T) {
 	p := testProxy(t)
 

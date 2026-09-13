@@ -108,6 +108,19 @@ func (r *ModelRoute) GetPeers() []core.PeerNode {
 	return peers
 }
 
+func (r *ModelRoute) GetPeersIncluding(self core.PeerNode) []core.PeerNode {
+	peers := r.GetPeers()
+	if !r.IsLocal() || self.ID == "" {
+		return peers
+	}
+	for _, p := range peers {
+		if p.ID == self.ID {
+			return peers
+		}
+	}
+	return append(peers, self)
+}
+
 func MakeRoute(name, model string, capabilities []string) ModelRoute {
 	return ModelRoute{
 		Name:         name,

@@ -22,6 +22,7 @@ type UIModel struct {
 	Name          string            `json:"name"`
 	Model         string            `json:"model"`
 	Private       bool              `json:"private"`
+	Local         bool              `json:"local"`
 	Owner         string            `json:"owner"`
 	ModifiedAt    time.Time         `json:"modified_at"`
 	ContextLength int               `json:"context_length"`
@@ -109,16 +110,18 @@ func (p *Proxy) uiModelsHandler(rpc *jsonrpc.RPC) error {
 		Models: make([]UIModel, 0, len(models)),
 	}
 
+	self := p.mesh.Node()
 	for _, route := range models {
 		m := UIModel{
 			Name:          route.Name,
 			Model:         route.Model,
 			Private:       route.IsPrivate(),
+			Local:         route.IsLocal(),
 			ContextLength: route.ContextLength,
 			ModifiedAt:    route.ModifiedAt,
 			Owner:         route.Owner,
 			Capabilities:  route.Capabilities,
-			Providers:     route.GetPeers(),
+			Providers:     route.GetPeersIncluding(self),
 		}
 		resp.Models = append(resp.Models, m)
 	}

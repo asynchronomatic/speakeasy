@@ -99,7 +99,7 @@ func TestUIModelsJSONShape(t *testing.T) {
 	for _, needle := range []string{
 		`"models"`, `"providers"`, `"ID":"12D3KooWtest"`, `"Name":"local"`,
 		`"capabilities"`, `"completion"`, `"vision"`,
-		`"private":true`, `"owner":"alice"`, `"context_length":8192`,
+		`"private":true`, `"local":false`, `"owner":"alice"`, `"context_length":8192`,
 	} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("missing %s in %s", needle, s)
@@ -118,7 +118,7 @@ func TestAppJSUsesNewUIModelFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, needle := range []string{"m.private", "m.owner", "m.context_length", "badge-private", "badge-shared", "providerID", "providerName", "providerIsSelf"} {
+	for _, needle := range []string{"m.private", "m.local", "m.owner", "m.context_length", "badge-private", "badge-shared", "providerID", "providerName", "providerIsSelf"} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("app.js missing %s", needle)
 		}

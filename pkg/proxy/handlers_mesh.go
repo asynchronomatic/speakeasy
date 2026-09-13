@@ -18,7 +18,7 @@ func (p *Proxy) meshStatus(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	resp.Status.Models = p.modelRouter.ListModels()
+	resp.Status.Models = p.modelRouter.ListLocalModels(true)
 	resp.Status.Mesh = p.mesh.GetPeerMeshInfo(p.mesh.Node()) // inspect self
 
 	w.Header().Set("Content-Type", "application/json")
@@ -54,7 +54,7 @@ func (p *Proxy) meshMembers(rpc *jsonrpc.RPC) error {
 				PeerID:    p.mesh.Node().ID,
 				Reachable: true,
 				Type:      "self",
-				Models:    p.modelRouter.ListModels(),
+				Models:    p.modelRouter.ListLocalModels(false),
 				Mesh:      p.mesh.GetPeerMeshInfo(peer),
 			}
 		} else {

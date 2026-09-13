@@ -132,3 +132,33 @@ func TestRouter(t *testing.T) {
 	assert.NotNil(t, models)
 	assert.Equal(t, 2, len(models))
 }
+
+func TestUpdatePeerModelsMergesLocalProviders(t *testing.T) {
+	node := core.NewPeerNode("self", "Self")
+	d := NewModelDiscovery(node, nil, nil)
+
+	d.UpdatePeerModels(peer, map[string]ModelRoute{
+		"shared-model": MakeRoute("shared-model", "shared-model", nil),
+	})
+	models := d.ListMeshModels()
+	assert.Equal(t, 1, len(models))
+	assert.False(t, models[0].IsLocal())
+
+	err := d.AddProvider(config.Provider{
+		ID:        "local",
+		Type:      "test",
+		BaseURL:   "http://127.0.0.1:1",
+		Private:   false,
+		Discovery: "whitelist",
+		Models:    []config.ModelConfig{{Model: "shared-model"}},
+	})
+	assert.NoError(t, err)
+
+	models = d.ListMeshModels()
+	assert.Equal(t, 1, len(models))
+	assert.True(t, models[0].IsLocal())
+	assert.False(t, models[0].IsPrivate())
+	assert.Equal(t, 2, len(models[0].GetPeersIncluding(node)))
+	assert.Equal(t, 1, len(d.ListLocalModels(false)))
+	assert.Equal(t, 1, len(d.ListLocalModels(true)))
+}

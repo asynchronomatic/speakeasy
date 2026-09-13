@@ -456,7 +456,7 @@
   }
 
   function providerID(p) {
-    return (p && p.ID) || "";
+    return (p && (p.ID || p.id)) || "";
   }
 
   function providerName(p) {
@@ -480,9 +480,16 @@
   }
 
   function modelsForPeer(peerID) {
-    return state.models.filter((m) =>
-      (m.providers || []).some((p) => providerID(p) === peerID)
-    );
+    const self = selfMember();
+    const isSelf = !!(self && peerID && self.PeerID === peerID);
+    const member = state.members.find((m) => m.PeerID === peerID);
+    const named = new Set((member && (member.Models || member.models)) || []);
+    return state.models.filter((m) => {
+      if ((m.providers || []).some((p) => providerID(p) === peerID)) return true;
+      if (isSelf && (m.local || m.Local)) return true;
+      const name = modelName(m);
+      return !!(name && named.has(name));
+    });
   }
 
   function relatedPeerIds(peerID, edges) {

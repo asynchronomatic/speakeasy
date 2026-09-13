@@ -205,6 +205,24 @@ func (e *ModelRouter) ListModels() []string {
 	return models
 }
 
+// ListLocalModels returns names of models this node actually serves.
+// If exportedOnly is set, private local models are omitted.
+func (e *ModelRouter) ListLocalModels(exportedOnly bool) []string {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	names := make([]string, 0)
+	for _, m := range e.MeshModels {
+		if !m.IsLocal() {
+			continue
+		}
+		if exportedOnly && m.IsPrivate() {
+			continue
+		}
+		names = append(names, m.Name)
+	}
+	return names
+}
+
 // fixme.... an update can add and remove a model
 func (e *ModelRouter) UpdatePeerModels(node core.PeerNode, peerModels map[string]ModelRoute) {
 	e.lock.Lock()
@@ -223,16 +241,35 @@ func (e *ModelRouter) UpdatePeerModels(node core.PeerNode, peerModels map[string
 	}
 
 	// add or update existing
-	for name := range peerModels {
+	for name, incoming := range peerModels {
 		route, ok := e.MeshModels[name]
 		if !ok {
-			log.Debugf("adding peer model %s: %+v", name, peerModels[name])
-			route = peerModels[name]
+			log.Debugf("adding peer model %s: %+v", name, incoming)
+			route = incoming
+		} else if node.ID == e.node.ID && len(incoming.providers) > 0 {
+			route.providers = mergeModelProviders(route.providers, incoming.providers)
 		}
 
 		route.AddPeer(node)
 		e.MeshModels[name] = route
 	}
+}
+
+func mergeModelProviders(dst, src []ModelProvider) []ModelProvider {
+	for _, in := range src {
+		found := false
+		for i, existing := range dst {
+			if existing.ID == in.ID {
+				dst[i] = in
+				found = true
+				break
+			}
+		}
+		if !found {
+			dst = append(dst, in)
+		}
+	}
+	return dst
 }
 
 func (e *ModelRouter) RemovePeer(node core.PeerNode) {
