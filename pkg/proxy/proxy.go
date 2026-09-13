@@ -403,7 +403,6 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.mux.HandleFunc("GET /api/mesh/settings", p.authenticated(jsonrpc.AsAdmin(p.settingsGetHandler)))
 	p.mux.HandleFunc("POST /api/mesh/settings", p.authenticated(jsonrpc.AsAdmin(p.settingsSetHandler)))
 
-	//p.mux.HandleFunc("GET /api/proxy/inference/chat/completions", p.inferenceChatCompletions)
 	p.mux.HandleFunc("GET /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokensList)))
 	p.mux.HandleFunc("POST /api/proxy/inference/tokens", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenCreate)))
 	p.mux.HandleFunc("DELETE /api/proxy/inference/tokens/{id}", p.authenticated(jsonrpc.AsAdmin(p.inferenceTokenDelete)))
