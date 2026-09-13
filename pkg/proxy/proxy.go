@@ -224,10 +224,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cid := atomic.AddUint64(&p.cid, 1)
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 
 	security.SetHeaders(w)
 	p.mux.ServeHTTP(w, r)
+	log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 }
 
 // MeshServeHTTP serves only our local models, it is used as an entry point for our p2p peers when they ask for
@@ -238,9 +238,8 @@ func (p *Proxy) MeshServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	log.WithName("proxy").Debugf("%s -- (mesh:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
-	defer log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
-
 	p.meshMux.ServeHTTP(w, r)
+	log.WithName("proxy").Infof("%s %v (mesh:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 }
 
 func (p *Proxy) Serve(ctx context.Context) error {
