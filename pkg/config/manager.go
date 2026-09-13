@@ -27,7 +27,6 @@ func SetConfigPath(p string) {
 	DefaultNodePath = path.Join(p, "node.key")
 	DefaultRelayPath = path.Join(p, "relay.key")
 	DefaultAdminDBPath = path.Join(p, "admin.jkv")
-
 }
 
 func init() {

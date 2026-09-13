@@ -142,7 +142,7 @@ func TestResetAll(t *testing.T) {
 	writeTestFile(t, config.DefaultRelayPath, []byte("relay-identity"))
 
 	confirmReset = func(title, description string) (bool, error) {
-		if !containsAll(description, config.DefaultConfigPath, config.DefaultNodePath) {
+		if !containsAll(description, config.DefaultConfigPath, config.DefaultNodePath, config.DefaultRelayPath) {
 			t.Fatalf("description missing files:\n%s", description)
 		}
 		return true, nil
@@ -156,11 +156,16 @@ func TestResetAll(t *testing.T) {
 		t.Fatal("expected config.yaml removed")
 	}
 	if fileExists(config.DefaultNodePath) {
-		t.Fatal("expected node.key removed")
+		t.Fatalf("expected node.key removed (%s)", config.DefaultNodePath)
 	}
 	if fileExists(config.DefaultRelayPath) {
-		t.Fatal("relay.key should be kept")
+		t.Fatal("relay.key should be removed")
 	}
+
+	if fileExists(config.DefaultAdminDBPath) {
+		t.Fatal("admin.kjv should be removed")
+	}
+
 }
 
 func TestResetCLIAll(t *testing.T) {

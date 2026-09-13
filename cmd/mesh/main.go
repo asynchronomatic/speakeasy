@@ -52,18 +52,17 @@ func main() {
 func newCommand() *cli.Command {
 	return &cli.Command{
 		Name:                  "mesh",
-		Usage:                 "Speakeasy mesh node: init, join, proxy, and admin",
+		Usage:                 "Speakeasy mesh node: init proxy, admin, reset",
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
-			/*
-				{
-					Name:  "init",
-					Usage: "Interactive setup: write config.yaml, node.key, and relay.key",
-					Action: func(context.Context, *cli.Command) error {
-						return initializeNewInstall()
-					},
+			{
+				Name:  "init",
+				Usage: "Creates a basic configuration ( Recommend running 'mesh proxy join' instead )",
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					return initConfig()
 				},
-			*/
+			},
+
 			{
 				Name:      "join",
 				Usage:     "Join a mesh from an invite URL, then start the proxy",

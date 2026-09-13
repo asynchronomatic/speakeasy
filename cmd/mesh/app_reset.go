@@ -1,8 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"path"
+	"slices"
 	"strings"
 
 	"charm.land/huh/v2"
@@ -12,6 +16,25 @@ import (
 )
 
 var confirmReset = promptResetConfirm
+
+var configObjects = map[string]struct {
+	IsDir       bool
+	Description string
+}{
+	"node.key": {
+		Description: "this node's libp2p identity",
+	},
+	"relay.key": {
+		Description: "relay server libp2p identity",
+	},
+	"admin.jkv": {
+		IsDir:       true,
+		Description: "admin key-value store",
+	},
+	"config.yaml": {
+		Description: "proxy, providers, admin, and mesh settings",
+	},
+}
 
 func runReset(all bool) error {
 	if all {
@@ -68,15 +91,25 @@ func resetMembership() error {
 }
 
 func resetAll() error {
-	configExists := fileExists(config.DefaultConfigPath)
-	keyExists := fileExists(config.DefaultNodePath)
+	toRemove := map[string]string{
+		"config.yaml": config.DefaultConfigPath,
+		"node.key":    config.DefaultNodePath,
+		"relay.key":   config.DefaultRelayPath,
+		"admin.jkv":   config.DefaultAdminDBPath,
+	}
 
-	if !configExists && !keyExists {
-		fmt.Println("Nothing to reset: config.yaml and node.key are not in this directory.")
+	for k, v := range toRemove {
+		if !fileExists(v) {
+			delete(toRemove, k)
+		}
+	}
+
+	if len(toRemove) == 0 {
+		fmt.Printf("Nothing to reset: %+v are not in the config directory %s\n", slices.Collect(maps.Keys(toRemove)), path.Dir(config.DefaultConfigPath))
 		return nil
 	}
 
-	ok, err := confirmReset("Delete this node's config and identity?", allResetDescription(configExists, keyExists))
+	ok, err := confirmReset("Delete this node's config and identity?", allResetDescription(toRemove))
 	if err != nil {
 		return err
 	}
@@ -85,31 +118,27 @@ func resetAll() error {
 		return nil
 	}
 
-	if err := removeFile(config.DefaultConfigPath); err != nil {
-		return err
-	}
-	if err := removeFile(config.DefaultNodePath); err != nil {
-		return err
-	}
-	if err := removeFile(config.DefaultRelayPath); err != nil {
-		return err
-	}
-
-	if err := removeDir(config.DefaultAdminDBPath); err != nil {
-		return err
+	for k, v := range toRemove {
+		desc := configObjects[k]
+		if desc.IsDir {
+			if err = removeDir(v); err != nil {
+				return err
+			}
+		} else {
+			if err := removeFile(v); err != nil {
+				return err
+			}
+		}
 	}
 
 	fmt.Println()
 	fmt.Println("Reset complete.")
-	if configExists {
-		fmt.Printf("  deleted:  %s\n", config.DefaultConfigPath)
+	for _, v := range toRemove {
+		fmt.Printf("  deleted:  %s\n", v)
 	}
-	if keyExists {
-		fmt.Printf("  deleted:  %s\n", config.DefaultNodePath)
-	}
+
 	fmt.Println()
 	fmt.Println("Next:")
-	fmt.Println("  mesh init                 # write a new config.yaml")
 	fmt.Println("  mesh join <invite-url>    # join a mesh")
 	return nil
 }
@@ -151,20 +180,17 @@ func membershipResetDescription(cfg *config.Config, keyExists bool) string {
 	return b.String()
 }
 
-func allResetDescription(configExists, keyExists bool) string {
+func allResetDescription(toRemove map[string]string) string {
 	var b strings.Builder
 	b.WriteString("This deletes the local install files. relay.key is kept.\n\nWill delete:\n")
-	if configExists {
-		fmt.Fprintf(&b, "  %s  (proxy, providers, admin, and mesh settings)\n", config.DefaultConfigPath)
-	} else {
-		fmt.Fprintf(&b, "  %s  (not present)\n", config.DefaultConfigPath)
+	for k, v := range toRemove {
+		desc, ok := configObjects[k]
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s  (%s)\n", v, desc.Description)
 	}
-	if keyExists {
-		fmt.Fprintf(&b, "  %s  (this node's libp2p identity)\n", config.DefaultNodePath)
-	} else {
-		fmt.Fprintf(&b, "  %s  (not present)\n", config.DefaultNodePath)
-	}
-	b.WriteString("\nYou will need to run mesh init and mesh join to start over.")
+	b.WriteString("\nYou will need to run mesh join to start over.")
 	return b.String()
 }
 
@@ -195,6 +221,15 @@ func removeDir(path string) error {
 		return fmt.Errorf("remove %s: %w", path, err)
 	}
 	return nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func aborted(err error) bool {
+	return err != nil && errors.Is(err, huh.ErrUserAborted)
 }
 
 func promptResetConfirm(title, description string) (bool, error) {
