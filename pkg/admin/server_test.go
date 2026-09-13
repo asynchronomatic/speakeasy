@@ -12,11 +12,14 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 func testNewServer(t *testing.T, addr, secret string) *Server {
 	t.Helper()
 	t.Setenv("ADMIN_DB_PATH", filepath.Join(t.TempDir(), "admin.jkv"))
+
+	secret = security.MustPasswordHashAndEncodeBase62(secret)
 	s, err := NewServer(addr, secret)
 	if err != nil {
 		t.Fatal(err)

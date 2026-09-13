@@ -1,11 +1,15 @@
 package auth
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+
+	"github.com/jxskiss/base62"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/asynchronomatic/speakeasy/pkg/security"
 )
 
 const SessionTokenPrefix = "mesh-"
@@ -13,19 +17,15 @@ const SessionTokenPrefix = "mesh-"
 type SessionAuthFunc func(token string) (*Properties, bool)
 
 type TokenAuth struct {
+	lock    sync.RWMutex
 	tokens  map[string]TokenUser
 	session SessionAuthFunc
 }
 
 type TokenUser struct {
-	User         string
-	Group        string
-	PasswordHash []byte
-}
-
-func hashPassword(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
+	User     string
+	Group    string
+	Password []byte
 }
 
 func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
@@ -33,47 +33,58 @@ func (a *TokenAuth) SetSessionAuth(fn SessionAuthFunc) {
 }
 
 func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
-	auth := r.Header.Get("Authorization")
-	const prefix = "bearer "
-	if len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix) {
-		token := strings.TrimSpace(auth[len(prefix):])
+	token := security.GetToken(r)
+	if token == "" {
+		return nil, http.StatusUnauthorized
+	}
 
-		if strings.HasPrefix(token, SessionTokenPrefix) {
-			if a.session == nil {
-				return nil, http.StatusUnauthorized
-			}
-			user, ok := a.session(token)
-			if !ok || user == nil {
-				return nil, http.StatusUnauthorized
-			}
-			return user, http.StatusOK
-		}
-
-		presented := hashPassword(token)
-		u, ok := a.tokens[presented]
-		if !ok {
+	if strings.HasPrefix(token, SessionTokenPrefix) {
+		if a.session == nil {
 			return nil, http.StatusUnauthorized
 		}
-
-		return &Properties{
-			User:  u.User,
-			Group: u.Group,
-		}, http.StatusOK
+		user, ok := a.session(token)
+		if !ok || user == nil {
+			return nil, http.StatusUnauthorized
+		}
+		return user, http.StatusOK
 	}
-	return nil, http.StatusUnauthorized
+
+	// FIXME: only support one auth user
+	// TODO: this neds to be reworked... to follow what we do for proxy
+	a.lock.Lock()
+	u, ok := a.tokens["admin"]
+	a.lock.Unlock()
+	if !ok {
+		security.DummySecretMatch(token)
+		return nil, http.StatusUnauthorized
+	}
+
+	err := bcrypt.CompareHashAndPassword(u.Password, []byte(token))
+	if err != nil {
+		return nil, http.StatusUnauthorized
+	}
+
+	return &Properties{
+		User:  u.User,
+		Group: u.Group,
+	}, http.StatusOK
 }
 
 // AddToken the token maps to a specific user
 func (a *TokenAuth) AddToken(token string, user string, group string) error {
-	user = strings.TrimSpace(user)
-	if user == "" || token == "" {
-		return errors.New("user and password are required")
+	if user == "" || group == "" || token == "" {
+		return fmt.Errorf("token, user and group must be set")
 	}
 
-	hashed := hashPassword(token)
-	a.tokens[hashed] = TokenUser{
-		User:  user,
-		Group: group,
+	hashed, err := base62.DecodeString(token)
+	if err != nil {
+		return nil
+	}
+	// TODO allow multiple users later
+	a.tokens["admin"] = TokenUser{
+		User:     user,
+		Group:    group,
+		Password: hashed,
 	}
 	return nil
 }
