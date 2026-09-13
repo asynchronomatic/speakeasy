@@ -1,3 +1,4 @@
+
 <h1 align="center">
   <a href="https://asynchronomatic.com/"><img width="500" src="https://github.com/asynchronomatic/speakeasy/blob/main/docs/header.jpg" alt="Speakeasy Header" /></a>
 </h1>
@@ -46,9 +47,11 @@ All traffic is always Peer-2-Peer and encrypted over libp2p QUIC protocol implem
 - **Private mesh** — libp2p Circuit Relay v2, hole punching, and optional LAN mDNS. Application traffic is not hairpinned through the admin HTTP API.
 - **Admin ACL** — token/`Bearer` auth on the controller
 - **Dashboard** — `/ui/` with Mesh, Nodes, Models, Chat, and Settings. Chat is in-memory only and warns when a model is served by another node.
+
 - **Themes** - multiple themes: Deco, Clean, Cyber and Dark
 
 ### How it works
+
 
 1. One host runs the **admin/relay** server (In standalone admin mode or hybrid admin+proxy )
 2. Each peer/member then runs  **`mesh proxy join`** with an Invite Link
@@ -84,6 +87,7 @@ You are probably here because someone already invited you top join their mesh wi
 git clone git@github.com:asynchronomatic/speakeasy.git
 cd speakeasy
 make build
+
 
 # Join an existing mesh ( You only need to do this once)
 ./build/speakeasy join <invite url>
