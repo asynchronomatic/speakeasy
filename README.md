@@ -8,13 +8,9 @@
 # Table of Contents <!-- omit in toc -->
 - [Background](#background)
 - [Screenshots](#screenshots)
-- [Usage](#usage)
-    - [Examples](#examples)
-    - [Dashboards](#dashboards)
-- [Contribute](#contribute)
-    - [Supported Go Versions](#supported-go-versions)
-- [Notable Users](#notable-users)
-
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Development](#development)
 
 
 # Background
@@ -30,11 +26,11 @@ All traffic is always Peer-2-Peer and encrypted over libp2p QUIC protocol implem
 
 # Screenshots
 <div style="display: flex; overflow-x: auto; gap: 12px; max-width: 100%; white-space: nowrap; padding-bottom: 10px;">
-  <img src="docs/panel-welcome.png" width="500" alt="Screenshot 1" style="flex: 0 0 auto;">
-  <img src="docs/panel-mesh.png" width="500" alt="Screenshot 2" style="flex: 0 0 auto;">
-  <img src="docs/panel-models.png" width="500" alt="Screenshot 2" style="flex: 0 0 auto;">
-  <img src="docs/panel-settings.png" width="500" alt="Screenshot 2" style="flex: 0 0 auto;">
-  <img src="docs/panel-admin.png" width="500" alt="Screenshot 2" style="flex: 0 0 auto;">
+  <img src="docs/panel-welcome.png" width="250" alt="Screenshot 1" style="flex: 0 0 auto;">
+  <img src="docs/panel-mesh.png" width="250" alt="Screenshot 2" style="flex: 0 0 auto;">
+  <img src="docs/panel-models.png" width="250" alt="Screenshot 2" style="flex: 0 0 auto;">
+  <img src="docs/panel-settings.png" width="250" alt="Screenshot 2" style="flex: 0 0 auto;">
+  <img src="docs/panel-admin.png" width="250" alt="Screenshot 2" style="flex: 0 0 auto;">
 </div>
 
 # Overview
@@ -71,13 +67,14 @@ All traffic is always Peer-2-Peer and encrypted over libp2p QUIC protocol implem
 
 There is no required environment variable for the proxy. Config is `config.example.yaml` in the process working directory.
 
-# Prerequisites
+# Quick start
+
+## Prerequisites
 
 - Go 1.27+
 - [Ollama](https://ollama.com) on any node that should serve models (default `http://localhost:11434`)
 - For an admin/relay: a reachable public IP, or NAT forwarding of **TCP** `admin_port` (default 4002) and **TCP+UDP** `relay_port` (default 4001)
 
-# Quick start
 
 ## For Users
 
@@ -120,7 +117,7 @@ print(client.chat.completions.create(
 ))
 ```
 
-## Development
+# Development
 
 ```bash
 make test
