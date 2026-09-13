@@ -16,6 +16,7 @@ func testLocalProvider(t *testing.T, backendURL, token string) *Proxy {
 
 	cm := testable.MustConfigManager(testDefaultConfigYAML)
 	cm.UpdateConfig(func(cfg *config.Config) error {
+		cfg.Proxy.InferenceTokens.Insecure = true
 		cfg.Proxy.AllowPrivateBackends = true
 		cfg.Providers = []config.Provider{{
 			ID:        "local",
