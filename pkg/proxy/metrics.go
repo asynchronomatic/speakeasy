@@ -61,5 +61,6 @@ func (m *Metrics) GetEgress(id string) Metric {
 func NewMetrics() *Metrics {
 	return &Metrics{
 		ingress: make(map[string]*Metric),
+		egress:  make(map[string]*Metric),
 	}
 }

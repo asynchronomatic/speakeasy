@@ -210,7 +210,7 @@
         <section id="view-nodes" class="view" data-view="nodes">
           <div class="page-header">
             <h2>Nodes</h2>
-            <p class="muted">Mesh members, reachability, and advertised models</p>
+            <p class="muted">Mesh members, reachability, and request stats</p>
           </div>
           <div class="toolbar">
             <input type="search" class="search-input" id="nodes-search" placeholder="Filter nodes" autocomplete="off">
@@ -223,12 +223,13 @@
                   <th>Peer ID</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Models</th>
+                  <th>Requests In</th>
+                  <th>Requests Out</th>
                   <th>Links</th>
                 </tr>
               </thead>
               <tbody id="nodes-body">
-                <tr><td colspan="6" class="empty">Loading nodes…</td></tr>
+                <tr><td colspan="7" class="empty">Loading nodes…</td></tr>
               </tbody>
             </table>
           </div>

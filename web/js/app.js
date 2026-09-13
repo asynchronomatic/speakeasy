@@ -697,6 +697,26 @@
     </div>`;
   }
 
+  function nodeMetric(m, ingress) {
+    const raw = ingress
+      ? (m && (m.StatsIngress || m.statsIngress))
+      : (m && (m.StatsEgress || m.statsEgress));
+    const count = Number((raw && (raw.RequestCount || raw.requestCount)) || 0);
+    const sec = Number((raw && (raw.RequestTime || raw.requestTime)) || 0);
+    if (!count && !sec) return "—";
+    return `${formatMetricSeconds(sec)} (${count})`;
+  }
+
+  function formatMetricSeconds(sec) {
+    if (!sec || sec < 0) return "0s";
+    if (sec < 1) return `${Math.round(sec * 1000)}ms`;
+    if (sec < 10) return `${sec.toFixed(1)}s`;
+    if (sec < 60) return `${Math.round(sec)}s`;
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return s ? `${m}m ${s}s` : `${m}m`;
+  }
+
   function renderNodes() {
     const q = state.nodesFilter.trim().toLowerCase();
     const members = sortedMembers().filter((m) => {
@@ -715,24 +735,18 @@
 
     if (!members.length) {
       const msg = state.members.length ? "No nodes match that filter." : "No mesh members yet.";
-      el.nodesBody.innerHTML = `<tr><td colspan="6" class="empty">${msg}</td></tr>`;
+      el.nodesBody.innerHTML = `<tr><td colspan="7" class="empty">${msg}</td></tr>`;
       return;
     }
 
     el.nodesBody.innerHTML = members
       .map((m) => {
-        const models = modelsForPeer(m.PeerID);
         const conns = (m.Mesh && m.Mesh.Connections) || [];
         const expanded = state.expandedPeer === m.PeerID;
         const role = m.Type === "self" ? `<span class="badge badge-online">this node</span>` : `<span class="badge">peer</span>`;
         const status = m.Reachable
           ? `<span class="badge badge-running">reachable</span>`
           : `<span class="badge badge-offline">unreachable</span>`;
-        const modelChips = models.length
-          ? models
-              .map((model) => `<span class="node-chip">${escapeHTML(modelName(model))}</span>`)
-              .join("")
-          : "—";
         return `<tr class="clickable-row node-row${expanded ? " is-expanded" : ""}" data-peer-id="${escapeHTML(m.PeerID)}">
           <td>
             <div class="cell-name"><span class="node-chevron">▾</span> ${escapeHTML(memberName(m))}</div>
@@ -740,12 +754,13 @@
           <td class="mono">${escapeHTML(shortID(m.PeerID))}</td>
           <td>${role}</td>
           <td>${status}</td>
-          <td><div class="node-chip-row">${modelChips}</div></td>
+          <td class="mono">${escapeHTML(nodeMetric(m, true))}</td>
+          <td class="mono">${escapeHTML(nodeMetric(m, false))}</td>
           <td class="mono">${conns.length}</td>
         </tr>
         ${
           expanded
-            ? `<tr class="node-expand-row"><td colspan="6">${nodeExpandHTML(m)}</td></tr>`
+            ? `<tr class="node-expand-row"><td colspan="7">${nodeExpandHTML(m)}</td></tr>`
             : ""
         }`;
       })
