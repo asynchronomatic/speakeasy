@@ -374,6 +374,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.meshMux.HandleFunc("/v1/responses", p.meshProxyRequest)
 	p.meshMux.HandleFunc("/v1/embeddings", p.meshProxyRequest)
 	p.meshMux.HandleFunc("/v1/messages", p.meshProxyRequest) // anthropic
+	p.meshMux.HandleFunc("/api/chat", p.meshProxyRequest)    // ollama compat
 
 	//-------------------------------------------
 	// Routes serviced by the proxy api locally
@@ -384,6 +385,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.mux.HandleFunc("/v1/responses", p.authenticateInference(p.localProxyRequest))
 	p.mux.HandleFunc("/v1/embeddings", p.authenticateInference(p.localProxyRequest))
 	p.mux.HandleFunc("/v1/messages", p.authenticateInference(p.localProxyRequest)) // anthropic
+	p.mux.HandleFunc("/api/chat", p.authenticateInference(p.localProxyRequest))    // ollama compat
 
 	// Secure endpoint
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
