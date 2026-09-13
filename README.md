@@ -1,32 +1,44 @@
-# Speakeasy
+![Speakeasy Header](docs/header.jpg)
 
-Share local Ollama models with a private group over a libp2p mesh, behind one OpenAI- and Ollama-compatible HTTP endpoint.
+Share local models with a private group over a libp2p mesh, behind one OpenAI and Ollama-compatible HTTP endpoint.
 
-Speakeasy is a Go proxy for people who already run Ollama and want friends’ machines to see those models without exposing Ollama itself. Each node keeps its own weights. A small admin/relay service tracks membership and helps with NAT. Chat and generate requests hit the local proxy first; if the model is not loaded here, the proxy forwards over the mesh.
+Speakeasy is a Go proxy for people who already run Ollama/VLLM/etc and want friends’ machines to be able to use these 
+models without exposing Ollama itself to the internet. Each node keeps its own weights. A small admin/relay service tracks 
+membership and helps with NAT. 
+
+Chat and generate requests hit the local proxy first; if the model is not loaded here, the proxy forwards over the mesh to one that does.
+
+All traffic is always Peer-2-Peer and encrypted over libp2p QUIC protocol implementation. 
+
+Note: our implementation uses a relay (seed/admin) node to bootstrap the mesh and allow nodes to hole punch to each other. 
+No actual data/llm/etc traffic uses the relay forwarding path.    
 
 ## Screenshots
+First some screenshots!
 
-![Mesh view: three reachable nodes on a circular graph, liquid.snake selected with its loaded models](docs/mesh_view.png) 
-![Models view: table of advertised models with nemotron-3.5-lightning expanded to specs, capabilities, and providing nodes](docs/model_view.png)
+<div style="display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px;">
+  <img src="docs/mesh_view.png" width="500" alt="Screenshot 1">
+  <img src="docs/model_view.png" width="500" alt="Screenshot 2">
+</div>
 
 
 The Mesh panel draws members and how they are connected (direct vs relay). Clicking a node opens a side card of models on that peer. The Models panel lists every advertised model, which nodes serve it, and expand-in-place details (identity, specs, capabilities, providers).
 
 ## Key features
 
-- **Local-first routing** — `/api/chat`, `/api/generate`, `/api/embed`, `/v1/chat/completions`, `/v1/embeddings`, and `/v1/messages` prefer a local Ollama provider, then a mesh peer that listed the model.
+- **Local-first routing** — `/api/chat`,  `/v1/chat/completions`, `/v1/embeddings`, and `/v1/messages` prefer a local Ollama provider, then a mesh peer that listed the model.
 - **Pinned export** — with `model_discovery: pinned`, only currently loaded Ollama models are advertised, so idle weights are not pulled across the mesh.
 - **Multiple Ollama backends** — one proxy can export several Ollama instances by listing more than one entry under `providers`.
 - **Private mesh** — libp2p Circuit Relay v2, hole punching, and optional LAN mDNS. Application traffic is not hairpinned through the admin HTTP API.
-- **Admin ACL** — token/`Bearer` auth on the controller; `allow.list` plus authorize/register for member peer IDs.
+- **Admin ACL** — token/`Bearer` auth on the controller
 - **Dashboard** — `/ui/` with Mesh, Nodes, Models, Chat, and Settings. Chat is in-memory only and warns when a model is served by another node.
-- **CLI setup** — `mesh init` and `mesh join` are interactive [huh](https://github.com/charmbracelet/huh) forms. `init` writes `config.example.yaml`, `node.key`, and `relay.key`. `join` only updates `admin_address` and `admin_secret`.
+
 
 ## How it works
 
 1. One host runs **admin** (HTTP membership API + circuit relay). It must be public or port-forwarded (TCP on the admin port, TCP+UDP on the relay port).
-2. Each member runs **`mesh init`**, then **`mesh join`** (or fills `admin_address` / `admin_secret` by hand), then **`mesh proxy`** next to a local Ollama.
-3. The proxy registers with admin, learns relay multiaddrs, and publishes its exported models. Peers fetch each other’s model lists over libp2p streams (`/.mesh/*`).
+2. Each member runs  **`mesh proxy join`** with an invite URL
+3. The proxy registers with admin, learns relay multiaddrs, and publishes its exported models. Peers fetch each other’s model lists over libp2p streams 
 4. Clients (Ollama CLI, OpenAI SDKs, or the built-in Chat UI) talk only to the local proxy listen address.
 
 `mesh proxy+admin` (also `hybrid` / `standalone`) runs admin, relay, and proxy on one machine.
@@ -57,20 +69,17 @@ go mod download
 
 make build
 
-# First machine (or any new checkout)
-/build/mesh init
-
 # Join an existing mesh (prompts for admin URL + secret, updates config.yaml)
-/build/mesh join
+/build/mesh join <invite url>
 
 # Member: proxy local Ollama onto the mesh
-/build/mesh proxy
+/build/mesh proxy start
 
 # Public host: membership API + circuit relay
-/build/mesh admin
+/build/mesh admin start
 
 # Single host: admin + relay + proxy
-/build/mesh hybrid
+/build/mesh hybrid start
 ```
 
 Makefile equivalents: `make run-proxy`, `make run-admin`, `make run-hybrid`.
@@ -133,51 +142,19 @@ print(client.chat.completions.create(
 ))
 ```
 
-`tests/test-request.sh` curls `/api/ps` and `/api/chat`.
-
-UI JSON (for the dashboard, not for peers):
-
-- `GET /api/mesh/members`
-- `GET /api/mesh/models`
-- `GET /api/mesh/config`
-
-Peer-only RPC: `GET /.mesh/status`, `/.mesh/members`, `/.mesh/models`.
-
-Admin API (secret via `token` header or `Authorization: Bearer`):
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/v1/relay` | Relay multiaddrs + membership clock |
-| `POST` | `/api/v1/authorize` | Allow a peer ID |
-| `POST` | `/api/v1/nodes` | Register |
-| `POST` | `/api/v1/nodes/{id}` | Refresh registration |
-| `DELETE` | `/api/v1/nodes/{id}` | Unregister |
-| `GET` | `/api/v1/nodes` | List members |
-
-## Project structure
-
-```
-cmd/mesh/          # init, join, proxy, admin, hybrid
-pkg/proxy/         # HTTP proxy, UI handlers, Ollama/OpenAI routes
-pkg/mesh/          # libp2p host, relay, discovery, streams
-pkg/admin/         # membership API + ACL
-pkg/core/          # config.yaml types
-web/               # dashboard
-docs/              # screenshots
-examples/          # sample YAML
-```
 
 ## Development
 
 ```bash
-go test ./pkg/admin/ ./pkg/proxy/ ./pkg/log/
-go build -o /tmp/mesh ./cmd/mesh
+make test
 make build    # linux/darwin/windows binaries under build/
 ```
 
 Run the binary from a directory that contains `config.example.yaml` and, for the dashboard, `web/`.
 
-This project was built with AI coding tools (the dashboard under `web/` in particular). AI-generated contributions are welcome if a human has reviewed and vetted them before they land.
+## AI Use Disclosure
+This project was built with AI coding tools (the dashboard under `web/` in particular). AI-generated contributions are 
+welcome as long as a human has reviewed and vetted the changes before they land.    
 
 ## License
 
