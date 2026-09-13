@@ -14,7 +14,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func TestConfigPath(t *testing.T) {
@@ -86,7 +86,7 @@ func TestRunJoin(t *testing.T) {
 			t.Fatalf("loaded mesh %+v", cfg.Mesh)
 		}
 
-		err = security.CompareBase62Password(cfg.Proxy.Password, "join-pass")
+		err = secrets.CompareBase62Password(cfg.Proxy.Password, "join-pass")
 		assert.NoError(t, err)
 		return nil
 	})
@@ -207,7 +207,7 @@ func TestJoinExistingWithoutPasswordPrompts(t *testing.T) {
 	require.NoError(t, err)
 
 	err = cm.ReadConfig(func(cfg *config.Config) error {
-		err := security.CompareBase62Password(cfg.Proxy.Password, "new-pass")
+		err := secrets.CompareBase62Password(cfg.Proxy.Password, "new-pass")
 		assert.NoError(t, err)
 		return nil
 	})

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func TestScrubMeshRequest(t *testing.T) {
@@ -28,7 +28,7 @@ func TestScrubMeshRequest(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-Id", "keep-me")
 
-	security.ScrubHeaders(req, security.DefaultAllowedHeaders)
+	secrets.ScrubHeaders(req, secrets.DefaultAllowedHeaders)
 
 	for _, name := range []string{
 		"Authorization",

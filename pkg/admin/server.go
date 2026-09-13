@@ -11,14 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
-
-	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 var BuildVersion string
@@ -89,7 +88,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/redeem/{id}", s.handle(s.adminRedeemInviteLink))
 
 	mux.HandleFunc("/", notFoundHandler)
-	return security.Handler(mux)
+	return secrets.Handler(mux)
 }
 
 func (s *Server) Listen() error {

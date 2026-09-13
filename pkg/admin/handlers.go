@@ -7,11 +7,11 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	log.WithName("admin").Errorf("%s %s %d -- %s %s\n", security.ClientAddr(r), "--", http.StatusNotFound, security.RequestMethod(r), security.RequestPath(r))
+	log.WithName("admin").Errorf("%s %s %d -- %s %s\n", secrets.ClientAddr(r), "--", http.StatusNotFound, secrets.RequestMethod(r), secrets.RequestPath(r))
 	http.Error(w, "404 Not Found", http.StatusNotFound)
 }
 
@@ -19,11 +19,11 @@ func (s *Server) logRequest(r *http.Request, user string, start time.Time) {
 	if user == "" {
 		user = "--"
 	} else {
-		user = security.SanitizeLog(user)
+		user = secrets.SanitizeLog(user)
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", security.ClientAddr(r), d.String(), user, security.RequestMethod(r), security.RequestPath(r))
+	log.WithName("admin").Infof("%s %s %s %s %s\n", secrets.ClientAddr(r), d.String(), user, secrets.RequestMethod(r), secrets.RequestPath(r))
 }
 
 func (s *Server) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
@@ -33,8 +33,8 @@ func (s *Server) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 			s.logRequest(r, "--", start)
 		}()
 
-		if err := security.RequireSameOrigin(r); err != nil {
-			security.RejectSameOrigin(w, err)
+		if err := secrets.RequireSameOrigin(r); err != nil {
+			secrets.RejectSameOrigin(w, err)
 			return
 		}
 
@@ -56,8 +56,8 @@ func (s *Server) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 			s.logRequest(r, "--", start)
 		}()
 
-		if err := security.RequireSameOrigin(r); err != nil {
-			security.RejectSameOrigin(w, err)
+		if err := secrets.RequireSameOrigin(r); err != nil {
+			secrets.RejectSameOrigin(w, err)
 			return
 		}
 

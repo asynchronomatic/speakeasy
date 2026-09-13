@@ -7,7 +7,6 @@ import (
 	"github.com/negrel/assert"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
@@ -38,6 +37,8 @@ func (p *Proxy) adminEnableHandler(rpc *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusPreconditionFailed, "invalid token")
 	}
 
+	/* we do not want to retain a plain text admin password,
+	   instead lets prompt the user each time the gateway starts
 	err := p.cm.UpdateConfig(func(cfg *config.Config) error {
 		cfg.Admin.Address = p.mesh.AdminAddress()
 		cfg.Admin.Secret = req.Token
@@ -45,7 +46,7 @@ func (p *Proxy) adminEnableHandler(rpc *jsonrpc.RPC) error {
 	})
 	if err != nil {
 		return err
-	}
+	}*/
 	p.WithAdminController(admin)
 
 	resp := struct {

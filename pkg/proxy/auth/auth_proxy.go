@@ -8,14 +8,14 @@ import (
 	"github.com/jxskiss/base62"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
-var encryptionKey = security.EncryptionKey{}
+var encryptionKey = secrets.EncryptionKey{}
 
 func init() {
 	var err error
-	encryptionKey, err = security.GenerateKey()
+	encryptionKey, err = secrets.GenerateKey()
 	if err != nil {
 		panic(err)
 	}
@@ -39,14 +39,14 @@ type UserAuth struct {
 }
 
 func (a *UserAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties, int) {
-	token := security.GetToken(r)
+	token := secrets.GetToken(r)
 	if token == "" {
 		return nil, http.StatusUnauthorized
 	}
 
 	session := sessionClaims{}
 
-	err := security.DecryptObject(token, &session, encryptionKey)
+	err := secrets.DecryptObject(token, &session, encryptionKey)
 	if err != nil {
 		return nil, http.StatusUnauthorized
 	}
@@ -74,7 +74,7 @@ func (a *UserAuth) LoginApi(userid, password string) (string, int) {
 	user, ok := a.users[userid]
 	a.lock.Unlock()
 	if !ok {
-		security.DummySecretMatch(password)
+		secrets.DummySecretMatch(password)
 		return "", http.StatusUnauthorized
 	}
 
@@ -89,7 +89,7 @@ func (a *UserAuth) LoginApi(userid, password string) (string, int) {
 		Expires: time.Now().Add(time.Hour * 24),
 	}
 
-	token, err := security.EncryptObject(&session, encryptionKey)
+	token, err := secrets.EncryptObject(&session, encryptionKey)
 	if err != nil {
 		return "", http.StatusInternalServerError
 	}

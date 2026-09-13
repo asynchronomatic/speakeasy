@@ -10,19 +10,19 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func (p *Proxy) logRequest(r *http.Request, user string, start time.Time) {
-	host := security.ClientAddr(r)
+	host := secrets.ClientAddr(r)
 	if user == "" {
 		user = "--"
 	} else {
-		user = security.SanitizeLog(user)
+		user = secrets.SanitizeLog(user)
 	}
 
 	d := time.Since(start).Round(time.Millisecond)
-	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, security.RequestMethod(r), security.RequestPath(r))
+	log.WithName("admin").Infof("%s %s %s %s %s\n", host, d.String(), user, secrets.RequestMethod(r), secrets.RequestPath(r))
 }
 
 // authenticateInference token based protection for inference api endpoints (/v1/)
@@ -45,7 +45,7 @@ func (p *Proxy) handle(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 			p.logRequest(r, "--", start)
 		}()
 
-		if err := security.RequireSameOrigin(r); err != nil {
+		if err := secrets.RequireSameOrigin(r); err != nil {
 			if ce, ok := err.(*api.Error); ok {
 				http.Error(w, ce.Message(), ce.Code())
 			} else {
@@ -74,8 +74,8 @@ func (p *Proxy) authenticated(fn func(*jsonrpc.RPC) error) http.HandlerFunc {
 			p.logRequest(r, "--", start)
 		}()
 
-		if err := security.RequireSameOrigin(r); err != nil {
-			security.RejectSameOrigin(w, err)
+		if err := secrets.RequireSameOrigin(r); err != nil {
+			secrets.RejectSameOrigin(w, err)
 			return
 		}
 
@@ -121,7 +121,7 @@ func (p *Proxy) withAdmin(fn func(*jsonrpc.RPC) error) func(*jsonrpc.RPC) error 
 
 func (p *Proxy) loginHandler(rpc *jsonrpc.RPC) error {
 	if p.auth == nil {
-		return jsonrpc.NewError(http.StatusUnauthorized, security.ErrorUnauthorized)
+		return jsonrpc.NewError(http.StatusUnauthorized, secrets.ErrorUnauthorized)
 	}
 
 	req := struct {
@@ -131,12 +131,12 @@ func (p *Proxy) loginHandler(rpc *jsonrpc.RPC) error {
 
 	err := rpc.GetObject(&req)
 	if err != nil {
-		return jsonrpc.NewError(http.StatusUnauthorized, security.ErrorUnauthorized)
+		return jsonrpc.NewError(http.StatusUnauthorized, secrets.ErrorUnauthorized)
 	}
 
 	token, code := p.auth.LoginApi(req.User, req.Password)
 	if code != http.StatusOK {
-		return jsonrpc.NewError(code, security.ErrorUnauthorized)
+		return jsonrpc.NewError(code, secrets.ErrorUnauthorized)
 	}
 
 	resp := struct {

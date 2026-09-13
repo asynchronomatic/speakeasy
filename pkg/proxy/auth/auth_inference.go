@@ -9,7 +9,7 @@ import (
 	"github.com/jxskiss/base62"
 	"github.com/negrel/assert"
 
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 var InferenceTokenPrefix = "se-"
@@ -56,11 +56,11 @@ func (a *InferenceAuth) checkToken(token string) (*Properties, int) {
 	stored, found := a.tokens[key]
 	a.lock.RUnlock()
 	if !found {
-		security.DummySecretMatchEx(secret)
+		secrets.DummySecretMatchEx(secret)
 		return nil, http.StatusUnauthorized
 	}
 
-	err = security.PasswordCompare(stored.HashedSecret, secret)
+	err = secrets.PasswordCompare(stored.HashedSecret, secret)
 	if err != nil {
 		return nil, http.StatusUnauthorized
 	}
@@ -129,7 +129,7 @@ func (a *InferenceAuth) AddToken(token string) error {
 
 func (a *InferenceAuth) CreateSecret() (string, string, error) {
 	for {
-		key, err := security.RandomSecret(InferenceKeyLength)
+		key, err := secrets.RandomSecret(InferenceKeyLength)
 		if err != nil {
 			return "", "", err
 		}
@@ -139,12 +139,12 @@ func (a *InferenceAuth) CreateSecret() (string, string, error) {
 			continue // retry somehow we got a duplicate
 		}
 
-		secret, err := security.RandomSecret(InferenceSecretLength)
+		secret, err := secrets.RandomSecret(InferenceSecretLength)
 		if err != nil {
 			return "", "", err
 		}
 
-		secretHash, err := security.HashSecret(secret)
+		secretHash, err := secrets.HashSecret(secret)
 		if err != nil {
 			return "", "", err
 		}

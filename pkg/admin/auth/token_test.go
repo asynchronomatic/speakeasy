@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 func bearerReq(token string) *http.Request {
@@ -29,32 +32,31 @@ func TestAddUserHashesPassword(t *testing.T) {
 
 func TestDoAuthAcceptsPassword(t *testing.T) {
 	a := NewTokenAuth()
-	if err := a.AddToken("secret", "admin", "admin"); err != nil {
-		t.Fatal(err)
-	}
+
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	assert.NoError(t, err)
 	got, code := a.DoAuth(nil, bearerReq("secret"))
-	if code != http.StatusOK || got == nil || got.User != "admin" || got.Group != "admin" {
-		t.Fatalf("got %+v code %d", got, code)
-	}
+	assert.Equal(t, http.StatusOK, code)
+	require.NotNil(t, got)
+	assert.Equal(t, "admin", got.User)
+	assert.Equal(t, "admin", got.Group)
 }
 
 func TestDoAuthRejectsWrongPassword(t *testing.T) {
 	a := NewTokenAuth()
-	if err := a.AddToken("secret", "admin", "admin"); err != nil {
-		t.Fatal(err)
-	}
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	assert.NoError(t, err)
 	got, code := a.DoAuth(nil, bearerReq("wrong"))
-	if code != http.StatusUnauthorized || got != nil {
-		t.Fatalf("got %+v code %d", got, code)
-	}
+	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Nil(t, got)
 }
 
 func TestDoAuthRejectsEmptyBearer(t *testing.T) {
 	a := NewTokenAuth()
-	_ = a.AddToken("secret", "admin", "admin")
-	if _, code := a.DoAuth(nil, httptest.NewRequest(http.MethodGet, "/x", nil)); code != http.StatusUnauthorized {
-		t.Fatalf("code %d", code)
-	}
+	err := a.AddToken(secrets.MustPasswordHashAndEncodeBase62("secret"), "admin", "admin")
+	assert.NoError(t, err)
+	_, code := a.DoAuth(nil, httptest.NewRequest(http.MethodGet, "/x", nil))
+	assert.Equal(t, http.StatusUnauthorized, code)
 }
 
 func TestAddUserRequiresFields(t *testing.T) {

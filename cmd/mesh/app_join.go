@@ -12,7 +12,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
 	"github.com/asynchronomatic/speakeasy/pkg/mesh"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 var ErrAborted = errors.New("aborted")
@@ -163,7 +163,7 @@ func ensureProxyPassword(cfg *config.Config) error {
 		return err
 	}
 
-	encoded, err := security.PasswordHashAndEncode(pw)
+	encoded, err := secrets.PasswordHashAndEncode(pw)
 	if err != nil {
 		return err
 	}

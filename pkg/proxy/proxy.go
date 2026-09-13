@@ -23,14 +23,13 @@ import (
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/autoip"
 	"github.com/asynchronomatic/speakeasy/pkg/config"
+	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
-
-	"github.com/asynchronomatic/speakeasy/pkg/core"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
 const maxBody = 8 << 20 // 1 MiB
@@ -124,7 +123,7 @@ func (p *Proxy) proxyModelRequest(w http.ResponseWriter, r *http.Request, isFrom
 				// pr.SetURL(u) // Use this if you need to handle the target URL scheme/host routing manually
 				pr.Out.URL.Scheme = "http"
 				pr.Out.Host = u.Host
-				security.ScrubHeaders(pr.Out, security.DefaultAllowedHeaders)
+				secrets.ScrubHeaders(pr.Out, secrets.DefaultAllowedHeaders)
 				if local.Token != "" {
 					pr.Out.Header.Set("Authorization", fmt.Sprintf("Bearer %s", local.Token))
 				}
@@ -225,7 +224,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.WithName("proxy").Debugf("%s -- (local:%d) %s %s\n", r.RemoteAddr, cid, r.Method, r.URL.Path)
 
-	security.SetHeaders(w)
+	secrets.SetHeaders(w)
 	p.mux.ServeHTTP(w, r)
 	log.WithName("proxy").Infof("%s %v (local:%d) %s %s\n", r.RemoteAddr, time.Since(start).Round(time.Second), cid, r.Method, r.URL.Path)
 }

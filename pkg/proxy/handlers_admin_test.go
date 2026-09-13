@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/asynchronomatic/speakeasy/api"
-	"github.com/asynchronomatic/speakeasy/pkg/security"
+	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 	"github.com/asynchronomatic/speakeasy/testable"
 )
 
 var ProxyLoginSecret = "test-password"
-var ProxyLoginHash = security.MustPasswordHashAndEncodeBase62(ProxyLoginSecret)
+var ProxyLoginHash = secrets.MustPasswordHashAndEncodeBase62(ProxyLoginSecret)
 
 var testDefaultConfigYAML = `
 proxy:
@@ -213,7 +213,7 @@ func TestAdminEnableToken(t *testing.T) {
 	assert.Equal(t, true, status.Enabled)
 
 	cfg = cm.Config()
-	assert.Equal(t, "good-token", cfg.Admin.Secret)
+	assert.Equal(t, "s", cfg.Admin.Secret) // ensure secret not changed
 	assert.Equal(t, "box", cfg.Mesh.Name)
 	assert.Equal(t, 1, len(cfg.Providers))
 	assert.Equal(t, "local", cfg.Providers[0].ID)
