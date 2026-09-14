@@ -85,7 +85,9 @@ func TestNormalizeTheme(t *testing.T) {
 		"Deco":  "deco",
 		"clean": "clean",
 		"NIGHT": "night",
-		"cyber": "cyber",
+		"cyber":           "cyber",
+		"Asynchronomatic": "asynchronomatic",
+		"asynchronomatic": "asynchronomatic",
 	}
 	for in, want := range cases {
 		if got := NormalizeTheme(in); got != want {

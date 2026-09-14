@@ -59,7 +59,7 @@ func TestUIStaticAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-invite-revoke-modal", "admin-node-kick-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "login-overlay", "login-form", "login-username", `value="admin"`, "readonly", "Sign in", `id="app" class="dashboard hidden"`, "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, "/ui/favicon.ico", "New Provider", "allow-private-backends", "Allow private backends", "switch-private", "providers-body", "provider-modal", "provider-delete-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy", `value="86400" selected`, `id="admin-invite-once" checked`, "Never expires", "<th>Uses</th>", "Requests In", "Requests Out", "Inference Tokens", "inference-tokens-body", "inference-token-modal", "inference-secret-modal", "inference-token-delete-modal", "inference-insecure", `role="switch"`, "switch-track", "inference-insecure-notice", "New Token", "Allow inference without a token", "Inference is public", "<th>Token</th>"} {
+	for _, needle := range []string{"Speakeasy", "Welcome", "OpenAI endpoint", "/v1", "Open WebUI", "Mesh", "Models", "view-admin", "Enter admin token", "admin-enable-form", "admin-locked", "New Invite", "admin-invite-modal", "admin-invite-revoke-modal", "admin-node-kick-modal", "admin-nodes-body", "Peer ID", "theme-select", "theme-error", "login-overlay", "login-form", "login-username", `value="admin"`, "readonly", "Sign in", `id="app" class="dashboard hidden"`, "data-theme", "Deco", "Cyber", "Clean", `value="cyber"`, `value="clean"`, `value="asynchronomatic"`, "Asynchronomatic", "/ui/favicon.ico", "New Provider", "allow-private-backends", "Allow private backends", "switch-private", "providers-body", "provider-modal", "provider-delete-modal", "provider-models-body", "provider-model-add", "modal-card-provider", "Add model", "Model whitelist (only the listed models will be exported)", "<th>Owner</th>", "<th>Context</th>", "<th>Visibility</th>", "<th>Capabilities</th>", "sk-speakeasy", `value="86400" selected`, `id="admin-invite-once" checked`, "Never expires", "<th>Uses</th>", "Requests In", "Requests Out", "Inference Tokens", "inference-tokens-body", "inference-token-modal", "inference-secret-modal", "inference-token-delete-modal", "inference-insecure", `role="switch"`, "switch-track", "inference-insecure-notice", "New Token", "Allow inference without a token", "Inference is public", "<th>Token</th>"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("index missing %s", needle)
 		}
@@ -203,6 +203,7 @@ func TestAppJSAdminPanel(t *testing.T) {
 		"theme-select",
 		"cyber",
 		"clean",
+		"asynchronomatic",
 		"/api/mesh/theme",
 		"saveTheme",
 		"loadTheme",

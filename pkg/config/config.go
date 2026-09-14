@@ -14,7 +14,7 @@ var DefaultProxyListen = ":4080"
 
 const DefaultTheme = "deco"
 
-var AllowedThemes = []string{"night", "deco", "cyber", "clean"}
+var AllowedThemes = []string{"night", "deco", "cyber", "clean", "asynchronomatic"}
 
 func NormalizeTheme(name string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
