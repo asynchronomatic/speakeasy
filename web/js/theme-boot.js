@@ -1,5 +1,5 @@
 (function () {
-  var allowed = { night: 1, deco: 1, cyber: 1, clean: 1 };
+  var allowed = { night: 1, deco: 1, cyber: 1, clean: 1, asynchronomatic: 1 };
   function apply(t) {
     t = allowed[t] ? t : "deco";
     document.documentElement.setAttribute("data-theme", t);

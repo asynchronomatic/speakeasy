@@ -145,7 +145,7 @@
     el.statusLabel.textContent = label;
   }
 
-  const THEMES = ["night", "deco", "cyber", "clean"];
+  const THEMES = ["night", "deco", "cyber", "clean", "asynchronomatic"];
 
   function normalizeTheme(name) {
     return THEMES.includes(name) ? name : "deco";
