@@ -57,7 +57,7 @@ type MDNSEventSource struct {
 }
 
 func (s *MDNSEventSource) HandlePeerFound(pi peer.AddrInfo) {
-	log.WithName("MSNS").Eventf("LAN Peer found: %s", pi.ID.String())
+	log.WithName("MDNS").Eventf("LAN Peer found: %s", pi.ID.String())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -68,16 +68,12 @@ func (s *MDNSEventSource) HandlePeerFound(pi peer.AddrInfo) {
 		log.Errorf("MDNS: %v\n", err)
 	}
 
-	/* We should not need to post an event
 	select {
 	case s.c <- PeerEvent{
 		PeerID: pi.ID.String(),
-		Status: PeerStatusUnknown,
+		Status: PeerStatusConnecting,
 	}:
-
-	default:
 	}
-	*/
 }
 
 func (s *MDNSEventSource) Start() error {

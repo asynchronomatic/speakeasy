@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"uuid"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -79,7 +78,7 @@ func (s *Server) apiNodeRegister(ctx *jsonrpc.RPC) error {
 		Node: req.Node,
 		// this is just needed so that if the node registered we can tell it has a new instance
 		// it has nothing to do with auth i'm probably overthinking this
-		InstanceID:  uuid.New().String(),
+		InstanceID:  instanceId,
 		LastUpdate:  req.Node.LastUpdate, // deprecate
 		LogicalTime: req.Node.LogicalTime,
 	}
@@ -113,7 +112,7 @@ func (s *Server) apiNodeRefresh(ctx *jsonrpc.RPC) error {
 	}
 
 	valid, _ := s.nodeStore.RefreshNode(id, req.InstanceID, invalidate)
-	if valid {
+	if !valid {
 		return jsonrpc.NewError(http.StatusConflict, "node registration invalid")
 	}
 

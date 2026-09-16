@@ -205,7 +205,7 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, status int) error {
 	}
 
 	switch status {
-	case mesh.PeerStatusUp, mesh.PeerStatusSync, mesh.PeerStatusUnknown:
+	case mesh.PeerStatusUp, mesh.PeerStatusSync, mesh.PeerStatusConnecting:
 		// transition occurred try reaching our peer for updates
 		err = p.updateModelsFromPeer(peer)
 

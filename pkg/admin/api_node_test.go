@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
@@ -326,5 +327,53 @@ func TestUnregisterDeletesCredentials(t *testing.T) {
 	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
 	_, err = api.RedeemInvite(ts.URL+"/api/v1/redeem/"+fresh.InviteId, api.Node{ID: "peer-unreg", Name: "n1"})
 	assert.Error(t, err)
+
+}
+
+func TestMeshClientExpire(t *testing.T) {
+	admin, ts := newAdminTestServer(t)
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: true})
+	join, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-client-login", Name: "n1"})
+	assert.NoError(t, err)
+
+	mc, err := api.NewClient(ts.URL, "").Mesh("default")
+	require.NoError(t, err)
+	require.NotNil(t, mc)
+
+	if err := mc.Login("peer-client-login", join.MeshSecret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mc.GetPeers(); err != nil {
+		t.Fatalf("session after login: %v", err)
+	}
+
+	reg, err := mc.Register("n1", "peer-client-login")
+	assert.NoError(t, err)
+
+	valid, ltime, err := reg.Refresh()
+	assert.NoError(t, err)
+	assert.True(t, valid)
+	assert.Equal(t, uint64(2), ltime)
+
+	err = reg.SignalUpdate()
+	assert.NoError(t, err)
+	valid, ltime, err = reg.Refresh()
+	assert.NoError(t, err)
+	assert.True(t, valid)
+	assert.Equal(t, uint64(3), ltime)
+
+	admin.nodeStore.ExpireStaleNodes(0)
+
+	valid, ltime, err = reg.Refresh()
+	assert.NoError(t, err)
+	assert.False(t, valid)
+	assert.Equal(t, uint64(0), ltime)
+
+	reg, err = mc.Register("n1", "peer-client-login")
+	assert.NoError(t, err)
+	valid, ltime, err = reg.Refresh()
+	assert.NoError(t, err)
+	assert.True(t, valid)
+	assert.Equal(t, uint64(4), ltime)
 
 }

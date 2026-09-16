@@ -266,7 +266,6 @@ func (store *MeshNodeStore) Load() error {
 	prefix := fmt.Sprintf("/mesh/%s/nodes/", store.mesh)
 
 	err := store.kv.ForEach(prefix, func(key string, data []byte) error {
-		fmt.Printf("forEach node: %s\n", key)
 		nodeID := strings.TrimPrefix(key, prefix)
 
 		var rec meshNodeRecord

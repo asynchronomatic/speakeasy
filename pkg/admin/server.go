@@ -24,7 +24,7 @@ var BuildVersion string
 const nodeExpiryCheckInterval = 1 * time.Minute
 
 // nodeExpiry defines the duration after which a node is considered stale and eligible for expiration.
-const nodeExpiry = 5 * time.Minute
+const nodeExpiry = 15 * time.Minute
 
 type Server struct {
 	mainAddress  string

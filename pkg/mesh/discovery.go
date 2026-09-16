@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	PeerStatusDown    = iota
-	PeerStatusUnknown = iota
-	PeerStatusRemoved = iota
-	PeerStatusUp      = iota
-	PeerStatusSync    = iota
+	PeerStatusDown       = iota
+	PeerStatusConnecting = iota
+	PeerStatusRemoved    = iota
+	PeerStatusUp         = iota
+	PeerStatusSync       = iota
 )
 
 type PeerEvent struct {
@@ -65,7 +65,7 @@ func (d *DiscoveryManager) loadPeerFromMeshController(id string) (peerStatus, er
 		if knownPeer.ID == id {
 			status = peerStatus{
 				node:        knownPeer,
-				status:      PeerStatusUnknown,
+				status:      PeerStatusConnecting,
 				needsUpdate: true,
 			}
 			if d.allow != nil {
@@ -123,7 +123,7 @@ func (d *DiscoveryManager) updatePeersFromAdmin() error {
 		if !ok {
 			knownStatus = peerStatus{
 				node:        peer,
-				status:      PeerStatusUnknown, // will probe
+				status:      PeerStatusConnecting, // will probe
 				needsUpdate: true,
 			}
 
@@ -133,19 +133,18 @@ func (d *DiscoveryManager) updatePeersFromAdmin() error {
 				knownStatus.needsUpdate = false
 			}
 		}
-
 		newStatus := knownStatus.status
-
-		if peer.LogicalTime != knownStatus.node.LogicalTime {
-			newStatus = PeerStatusDown
-		}
 
 		if peer.InstanceId == "" {
 			// controller knows nothing about this peer
 			newStatus = PeerStatusDown
+		} else if knownStatus.node.InstanceId == "" {
+			newStatus = PeerStatusConnecting
 		}
 
-		log.WithName("disc").Debugf("ctrl reports peer %s (status:%d)", knownStatus.node, knownStatus.status)
+		// newStatus = PeerStatusUnknown
+
+		log.WithName("disc").Debugf("ctrl reports peer %s (status:%d/%s)", knownStatus.node, newStatus, peer.InstanceId)
 
 		knownStatus = d.updatePeer(knownStatus, newStatus)
 
@@ -191,64 +190,81 @@ func (d *DiscoveryManager) updatePeersFromAdmin() error {
 //	PeerStatusRemoved        |
 //
 // this is all serialized via the listenForChangesChannel
+
+type stateUpdateFunc func(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus
+
+func stateUpdateNoop(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	return currentStatus
+}
+
+func stateUpdateTryConnect(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	err := d.onUpdate(currentStatus.node, newStatus)
+	if err == nil {
+		currentStatus.status = PeerStatusUp
+		currentStatus.needsUpdate = false
+	} else {
+		currentStatus.needsUpdate = true // retry
+	}
+	return currentStatus
+}
+
+func stateUpdateTrySync(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	_ = d.onUpdate(currentStatus.node, newStatus)
+	return currentStatus
+}
+
+var stateEngine = map[int]map[int]stateUpdateFunc{
+	PeerStatusDown: {
+		PeerStatusDown:       stateUpdateNoop,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+	PeerStatusConnecting: {
+		PeerStatusDown:       stateUpdateTrySync,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+	PeerStatusUp: {
+		PeerStatusUp:         stateUpdateNoop,
+		PeerStatusDown:       stateUpdateTrySync,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+
+	// there should never be a current status removed
+	//PeerStatusRemoved: {
+	//}
+	// there should never be a current status sync
+	//PeerStatusSync:
+}
+
 func (d *DiscoveryManager) updatePeer(currentStatus peerStatus, newStatus int) peerStatus {
 	if currentStatus.node.ID == d.h.ID().String() {
 		// ignore self in updates
 		return currentStatus
 	}
 
-	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v --> %d?", currentStatus.node.ID, currentStatus.status, currentStatus.needsUpdate, newStatus)
-	if currentStatus.status == newStatus {
-		// statuses do not match
-		switch newStatus {
-		case PeerStatusSync:
-			// sync is transient (one shot)
-			_ = d.onUpdate(currentStatus.node, newStatus)
-			return currentStatus
-
-		// Keep trying connection
-		case PeerStatusUnknown:
-			err := d.onUpdate(currentStatus.node, newStatus)
-			if err == nil {
-				currentStatus.status = PeerStatusUp
-				currentStatus.needsUpdate = false
-			} else {
-				currentStatus.needsUpdate = true // retry
-			}
-
-		default:
-			return currentStatus
-		}
-	} else {
-		// statuses do not match, taker action
-		switch newStatus {
-		case PeerStatusSync:
-			// sync is transient (one shot)
-			_ = d.onUpdate(currentStatus.node, newStatus)
-			return currentStatus
-
-		case PeerStatusDown, PeerStatusRemoved:
-			_ = d.onUpdate(currentStatus.node, newStatus)
-			currentStatus.status = newStatus
-			return currentStatus
-
-		case PeerStatusUp, PeerStatusUnknown:
-			err := d.onUpdate(currentStatus.node, newStatus)
-			if err == nil {
-				currentStatus.status = PeerStatusUp
-				currentStatus.needsUpdate = false
-
-				// notify peers state changed on us
-				_ = d.events.ForceUpdate()
-			} else {
-				currentStatus.needsUpdate = true // retry
-			}
-			return currentStatus
-		}
+	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v --> %d?", currentStatus.node, currentStatus.status, currentStatus.needsUpdate, newStatus)
+	current, ok := stateEngine[currentStatus.status]
+	assert.True(ok)
+	if !ok {
+		log.WithName("discovery").Errorf("invalid current state %d", currentStatus.status)
+		return currentStatus
 	}
 
-	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v", currentStatus.node.ID, currentStatus.status, currentStatus.needsUpdate)
-	return currentStatus
+	action, ok := current[newStatus]
+	assert.True(ok)
+	if !ok {
+		log.WithName("discovery").Errorf("invalid state stansition %d - > %d", currentStatus.status, newStatus)
+		return currentStatus
+	}
+
+	status := action(d, currentStatus, newStatus)
+	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v === %d", currentStatus.node, currentStatus.status, currentStatus.needsUpdate, newStatus)
+	return status
 }
 
 // updates can only happen in one thread/goroutine from listenForPeerUpdates
@@ -283,11 +299,11 @@ func (d *DiscoveryManager) fromHostEvent(e any) (PeerEvent, bool) {
 		log.WithName("disc").Debugf("%T: %+v", e, ev)
 		switch ev.Connectedness {
 		case network.Connected:
-			peerEvent.Status = PeerStatusUp
+			peerEvent.Status = PeerStatusConnecting
 		case network.Limited:
-			peerEvent.Status = PeerStatusUnknown
+			peerEvent.Status = PeerStatusConnecting
 		case network.NotConnected:
-			peerEvent.Status = PeerStatusUnknown
+			peerEvent.Status = PeerStatusConnecting
 		default:
 			return PeerEvent{}, false
 		}
