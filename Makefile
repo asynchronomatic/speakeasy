@@ -1,6 +1,7 @@
 
 
 build: test
+	go mod tidy
 	go build -tags assert -o build/speakeasy github.com/asynchronomatic/speakeasy/cmd/mesh
 	go build -tags assert -o build/speakeasy-cli github.com/asynchronomatic/speakeasy/cmd/admincli
 .PHONY: build

@@ -6,6 +6,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
+	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
 type MeshNode struct {
@@ -60,11 +61,11 @@ func (t *MeshNode) WithUpdateHandlerFunc(h core.UpdateHandlerFunc) {
 }
 
 func (t *MeshNode) onNodeConnected(node core.PeerNode) {
-	_ = t.updateHandler(node, false)
+	_ = t.updateHandler(node, mesh.PeerStatusUp)
 }
 
 func (t *MeshNode) onNodeDisconnected(node core.PeerNode) {
-	_ = t.updateHandler(node, true)
+	_ = t.updateHandler(node, mesh.PeerStatusUp)
 }
 
 func NewTestableMesh(node core.PeerNode) *MeshNode {

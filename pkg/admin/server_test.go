@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/secrets"
@@ -129,7 +131,7 @@ func TestNewServerUsesAdminDBPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.kv.Put("probe", "ok"); err != nil {
+	if err := s.nodeStore.kv.Put("probe", "ok"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -192,6 +194,7 @@ func TestAdminBearerAuthAndRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("register: got %d", res.StatusCode)
 	}

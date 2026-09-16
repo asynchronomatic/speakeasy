@@ -117,7 +117,7 @@ func TestSessionRejectedAfterACLRemove(t *testing.T) {
 	}
 	res.Body.Close()
 
-	s.acl.Remove("peer-acl-1")
+	s.GetAllowList().Remove("peer-acl-1")
 
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/nodes", nil)
 	req.Header.Set("Authorization", "Bearer "+login.Token)
@@ -309,12 +309,11 @@ func TestUnregisterDeletesCredentials(t *testing.T) {
 	}
 
 	var rec meshNodeRecord
-	err = s.kv.Get(meshNodeKVKey("default", "peer-unreg"), &rec)
+	err = s.nodeStore.kv.Get(meshNodeKVKey("default", "peer-unreg"), &rec)
 	assert.NoError(t, err)
 
-	if s.acl.Has("peer-unreg") {
-		t.Fatal("node still on ACL")
-	}
+	has := s.GetAllowList().Has("peer-unreg")
+	assert.Equal(t, true, has)
 
 	relogin := postJSON(t, ts, http.MethodPost, "/api/v1/login", "", api.NodeLoginRequest{
 		NodeID:     "peer-unreg",

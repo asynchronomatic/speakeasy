@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
@@ -15,7 +16,7 @@ import (
 // in the first place. You can deploy mDNS (Multicast DNS) discovery.mDNS broadcasts a signal over your local router
 // subnet so nodes can find each other instantly, establishing a direct connection without ever querying the remote
 // relay for information.
-
+/*
 type discoveryNotifee struct {
 	discovery *DiscoveryManager
 }
@@ -33,7 +34,7 @@ func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
 		log.Errorf("MDNS: %v\n", err)
 	}
 
-	n.discovery.postEvent(peerEvent{
+	n.discovery.postEvent(PeerEvent{
 		PeerID: pi.ID.String(),
 		Status: PeerStatusUp,
 	})
@@ -46,4 +47,53 @@ func EnableMDNS(d *DiscoveryManager) error {
 	// The second argument is a service tag identifier (keep it matching across your nodes)
 	ser := mdns.NewMdnsService(d.h, "ollama-mesh", &discoveryNotifee{discovery: d})
 	return ser.Start()
+}
+*/
+
+type MDNSEventSource struct {
+	h    host.Host
+	c    chan PeerEvent
+	mdns mdns.Service
+}
+
+func (s *MDNSEventSource) HandlePeerFound(pi peer.AddrInfo) {
+	log.WithName("MSNS").Eventf("LAN Peer found: %s", pi.ID.String())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// NOTE: force a direct dial here, to get a direct connection on lan
+	ctx = network.WithForceDirectDial(ctx, "mdns")
+	err := s.h.Connect(ctx, pi)
+	if err != nil {
+		log.Errorf("MDNS: %v\n", err)
+	}
+
+	/* We should not need to post an event
+	select {
+	case s.c <- PeerEvent{
+		PeerID: pi.ID.String(),
+		Status: PeerStatusUnknown,
+	}:
+
+	default:
+	}
+	*/
+}
+
+func (s *MDNSEventSource) Start() error {
+	return s.mdns.Start()
+}
+
+func (s *MDNSEventSource) Out() <-chan PeerEvent {
+	return s.c
+}
+
+func NewMDNSEventSource(h host.Host) *MDNSEventSource {
+	s := &MDNSEventSource{
+		h: h,
+		c: make(chan PeerEvent, 64),
+	}
+
+	s.mdns = mdns.NewMdnsService(s.h, "speakeasy", s)
+	return s
 }

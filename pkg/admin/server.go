@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
@@ -22,11 +20,11 @@ import (
 
 var BuildVersion string
 
-type NodeReference struct {
-	Node       api.Node
-	InstanceID string
-	LastPing   time.Time
-}
+// nodeExpiryCheckInterval defines the interval for checking and expiring stale node registrations.
+const nodeExpiryCheckInterval = 1 * time.Minute
+
+// nodeExpiry defines the duration after which a node is considered stale and eligible for expiration.
+const nodeExpiry = 5 * time.Minute
 
 type Server struct {
 	mainAddress  string
@@ -34,31 +32,33 @@ type Server struct {
 	relayAddress []string
 	httpServer   *http.Server
 	lock         sync.Mutex
-	lastUpdate   time.Time
-	logicalTime  uint64
-	nodes        map[string]*NodeReference
-	acl          *AllowList
-	kv           *jsonkv.Store
-
-	auth auth.Provider
+	db           *jsonkv.Store
+	auth         auth.Provider
 
 	//baseUrl  string
 	advertiseURL string
 	magicKey     magiclink.EncryptionKey
+
+	nodeStore   *MeshNodeStore
+	inviteStore *InviteStore
 }
 
-func OutboundIP() (string, error) {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return "", err
+func adminDBPath() string {
+	if p := strings.TrimSpace(os.Getenv("ADMIN_DB_PATH")); p != "" {
+		return p
 	}
-	defer conn.Close()
+	return "admin.jkv"
+}
 
-	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		return "", fmt.Errorf("unexpected local addr type: %T", conn.LocalAddr())
+func (s *Server) runExpireNodes(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(nodeExpiryCheckInterval):
+			s.nodeStore.ExpireStaleNodes(nodeExpiry)
+		}
 	}
-	return udpAddr.IP.String(), nil
 }
 
 func (s *Server) routes() http.Handler {
@@ -68,6 +68,7 @@ func (s *Server) routes() http.Handler {
 
 	// authenticated:
 	mux.HandleFunc("GET /api/v1/relay", s.authenticated(s.apiRelayGet))
+	// @deprecate or fix this endpoint
 	mux.HandleFunc("POST /api/v1/authorize", s.authenticated(s.apiNodeAuthorize))
 	mux.HandleFunc("POST /api/v1/nodes", s.authenticated(s.apiNodeRegister))
 	mux.HandleFunc("DELETE /api/v1/nodes/{id}", s.authenticated(s.apiNodeUnregister))
@@ -92,8 +93,6 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) Listen() error {
-	// expire old nodes
-
 	return s.Serve(context.Background())
 }
 
@@ -138,14 +137,14 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 func (s *Server) GetAllowList() *AllowList {
-	return s.acl
+	return s.nodeStore.acl
 }
 
 func (s *Server) Close() error {
 	if s == nil {
 		return nil
 	}
-	return s.kv.Close()
+	return s.db.Close()
 }
 
 func (s *Server) WithRelayAddresses(advertiseAddresses []string) {
@@ -169,7 +168,7 @@ func (s *Server) Wait(ctx context.Context) error {
 
 		resp, err := client.Do(req)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode < 500 {
 				return nil
 			}
@@ -181,13 +180,6 @@ func (s *Server) Wait(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-func adminDBPath() string {
-	if p := strings.TrimSpace(os.Getenv("ADMIN_DB_PATH")); p != "" {
-		return p
-	}
-	return "admin.jkv"
 }
 
 func (s *Server) WithAdvertiseURL(url string) *Server {
@@ -203,7 +195,8 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 		return nil, err
 	}
 
-	acl, err := NewAllowList()
+	a := auth.NewTokenAuth()
+	err = a.AddToken(adminKey, "admin", AdminGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -213,33 +206,20 @@ func NewServer(listenAddress, adminKey string) (*Server, error) {
 		return nil, err
 	}
 
-	// restore ACL on boot
-	err = kv.ForEach("/mesh/", func(key string, data []byte) error {
-		_, nodeID, ok := parseMeshNodeKVKey(key)
-		if !ok {
-			return nil
-		}
-		acl.Add(nodeID)
-		return nil
-	})
+	nodeStore, err := NewMeshNodeStore("default", kv, NewAllowList())
 	if err != nil {
-		return nil, err
-	}
-
-	a := auth.NewTokenAuth()
-	err = a.AddToken(adminKey, "admin", AdminGroup)
-	if err != nil {
+		_ = kv.Close()
 		return nil, err
 	}
 
 	s := &Server{
 		mainAddress: listenAddress,
 		adminKey:    adminKey,
-		nodes:       make(map[string]*NodeReference),
-		acl:         acl,
-		kv:          kv,
+		db:          kv,
 		auth:        a,
 		magicKey:    magicKey,
+		inviteStore: NewInviteStore("default", kv),
+		nodeStore:   nodeStore,
 	}
 	a.SetSessionAuth(func(token string) (*auth.Properties, bool) {
 		props, err := s.authenticateSessionToken(token)

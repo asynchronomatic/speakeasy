@@ -6,6 +6,7 @@ import (
 
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 )
 
 func (p *Proxy) meshStatus(w http.ResponseWriter, r *http.Request) {
@@ -58,16 +59,19 @@ func (p *Proxy) meshMembers(rpc *jsonrpc.RPC) error {
 				Mesh:      p.mesh.GetPeerMeshInfo(peer),
 			}
 		} else {
-			// FIXME: we can use a long lived connection, but then we need to know if it is long lived or not
-			client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
-			status, err = client.GetMeshStatus()
-			if err != nil {
-				log.WithName("proxy").Infof("failed to get mesh status from peer %s: %v", peer, err)
-				status.PeerID = peer.ID
-				status.Name = peer.Name
-				status.Reachable = false
-			}
+			status.PeerID = peer.ID
+			status.Name = peer.Name
+			status.Reachable = false
 			status.Type = "peer"
+
+			if peer.Status == mesh.PeerStatusUp {
+				// FIXME: we can use a long lived connection, but then we need to know if it is long lived or not
+				client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
+				status, err = client.GetMeshStatus()
+				if err != nil {
+					log.WithName("proxy").Infof("failed to get mesh status from peer %s: %v", peer, err)
+				}
+			}
 		}
 		status.StatsIngress = p.metrics.GetIngress(peer.ID)
 		status.StatsEgress = p.metrics.GetEgress(peer.ID)

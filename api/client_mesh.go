@@ -28,9 +28,9 @@ type Node = core.PeerNode
 
 type RegisterNodeRequest struct {
 	Node        Node
-	InstanceID  string
-	LogicalTime uint64
-	LastUpdate  time.Time
+	InstanceID  string    // @deprecated, its in the node now
+	LogicalTime uint64    //
+	LastUpdate  time.Time // @depracated
 }
 
 type ListNodesResponse struct {
@@ -99,6 +99,7 @@ func (r *Registration) refresh(updated bool) (bool, uint64, error) {
 
 		if strings.Contains(err.Error(), "401") {
 			r.client.expires = 1
+			return false, 0, nil
 		}
 		return false, 0, err
 	}

@@ -32,6 +32,8 @@ type PeerNode struct {
 	Name        string
 	LogicalTime uint64
 	LastUpdate  time.Time
+	Status      int
+	InstanceId  string
 }
 
 func (p PeerNode) String() string {
@@ -45,7 +47,7 @@ func NewPeerNode(id, name string) PeerNode {
 	}
 }
 
-type UpdateHandlerFunc func(peer PeerNode, removed bool) error
+type UpdateHandlerFunc func(peer PeerNode, status int) error
 
 type MeshServiceProvider interface {
 	Node() PeerNode
