@@ -37,6 +37,18 @@ func (a *PeerAllowList) Pin(ids ...string) {
 	}
 }
 
+func (a *PeerAllowList) Add(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.members[id] = struct{}{}
+}
+
+func (a *PeerAllowList) Remove(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.members, id)
+}
+
 func (a *PeerAllowList) SetRefresher(fn func() []string) {
 	a.mu.Lock()
 	a.refresher = fn

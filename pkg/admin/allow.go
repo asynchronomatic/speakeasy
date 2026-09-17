@@ -11,9 +11,8 @@ type AllowList struct {
 	allow map[string]struct{}
 }
 
-func NewAllowList() (*AllowList, error) {
-	l := &AllowList{allow: map[string]struct{}{}}
-	return l, nil
+func NewAllowList() *AllowList {
+	return &AllowList{allow: map[string]struct{}{}}
 }
 
 func (l *AllowList) Has(id string) bool {

@@ -26,6 +26,7 @@ import (
 	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
+	"github.com/asynchronomatic/speakeasy/pkg/mesh"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/modeldex"
 	"github.com/asynchronomatic/speakeasy/pkg/proxy/socket"
@@ -168,28 +169,8 @@ func rejectProviderRedirect(resp *http.Response) error {
 	return nil
 }
 
-// OnPeerUpdate handles the addition or removal of a peer and updates the meshRoutes accordingly.
-// It fetches model information from peers on addition and merges it into the local model state.
-// Returns an error if the model fetch from a peer fails.
-func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
-	log.WithName("proxy:").Eventf("OnPeerUpdate: %s [Remove:%t]\n", peer, remove)
-	// Always notify if we saw a change
-	defer p.notifier.Broadcast()
-	if peer.ID == "" {
-		return nil
-	}
-
-	// fetch models from peer
-	if remove {
-		p.modelRouter.RemovePeer(peer)
-		return nil
-	}
-
-	// Peers that registered at the same time are often not dialable yet
-	// (circuit reservation / swarm backoff). Retry before giving up;
-	// discovery will try again on the next poll if this still fails.
+func (p *Proxy) updateModelsFromPeer(peer core.PeerNode) error {
 	client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
-
 	var models map[string]modeldex.ModelRoute
 	err := retry.Do(context.Background(), retry.WithMaxRetries(0, retry.NewFibonacci(2*time.Second)),
 		func(ctx context.Context) error {
@@ -209,6 +190,29 @@ func (p *Proxy) OnPeerUpdate(peer core.PeerNode, remove bool) error {
 	log.WithName("proxy").Eventf("discovered peer models %s: %+v", peer, slices.Collect(maps.Keys(models)))
 	p.modelRouter.UpdatePeerModels(peer, models)
 	return nil
+}
+
+// OnPeerUpdate handles the addition or removal of a peer and updates the meshRoutes accordingly.
+// It fetches model information from peers on addition and merges it into the local model state.
+// Returns an error if the model fetch from a peer fails.
+func (p *Proxy) OnPeerUpdate(peer core.PeerNode, status int) error {
+	var err error
+	log.WithName("proxy:").Errorf("OnPeerUpdate: %s [Status:%v]\n", peer, status)
+	// always notify of a change
+	defer p.notifier.Broadcast()
+	if peer.ID == "" {
+		return nil
+	}
+
+	switch status {
+	case mesh.PeerStatusUp, mesh.PeerStatusSync, mesh.PeerStatusConnecting:
+		// transition occurred try reaching our peer for updates
+		err = p.updateModelsFromPeer(peer)
+
+	case mesh.PeerStatusDown, mesh.PeerStatusRemoved:
+		p.modelRouter.RemovePeer(peer)
+	}
+	return err
 }
 
 func (p *Proxy) localProxyRequest(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +400,7 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	// /api/mesh/... are the api endpoints that can be used by UIs/clients
 	p.mux.HandleFunc("POST /api/mesh/login", p.handle(p.loginHandler))
 
+	// test code remove
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))

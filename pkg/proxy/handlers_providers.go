@@ -362,5 +362,6 @@ func (p *Proxy) settingsSetHandler(rpc *jsonrpc.RPC) error {
 
 	p.applyPrivateBackends(allowed)
 	p.notifier.Broadcast()
+	p.mesh.SignalUpdate() //  signal peers that things have changed ( this only really applies to the provider settings)
 	return rpc.ReplyObject(&req)
 }

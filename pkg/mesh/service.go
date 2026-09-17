@@ -284,7 +284,7 @@ func (m *Service) GetHost() host.Host {
 }
 
 func (m *Service) SignalUpdate() {
-	m.discovery.postEvent(peerEvent{
+	m.discovery.postEvent(PeerEvent{
 		PeerID: m.node.ID,
 		Status: PeerStatusUp,
 	})

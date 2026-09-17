@@ -2,6 +2,7 @@ package mesh
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/negrel/assert"
-	"golang.org/x/exp/maps"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/core"
@@ -17,21 +17,22 @@ import (
 )
 
 const (
-	PeerStatusUnknown = iota
-	PeerStatusRemoved = iota
-	PeerStatusDown    = iota
-	PeerStatusUp      = iota
+	PeerStatusDown       = iota
+	PeerStatusConnecting = iota
+	PeerStatusRemoved    = iota
+	PeerStatusUp         = iota
+	PeerStatusSync       = iota
 )
 
-type peerEvent struct {
+type PeerEvent struct {
 	PeerID string
 	Status int
 }
 
 type peerStatus struct {
-	node        core.PeerNode
-	status      int
-	ltime       uint64
+	node   core.PeerNode
+	status int
+	//ltime       uint64
 	needsUpdate bool
 }
 
@@ -39,9 +40,10 @@ type DiscoveryManager struct {
 	ctrl            *api.MeshClient
 	h               host.Host
 	node            core.PeerNode
+	events          *EventManager
 	MDNSEnabled     bool
 	onUpdate        core.UpdateHandlerFunc
-	discoveryEvents chan peerEvent
+	discoveryEvents chan PeerEvent
 
 	lock         sync.RWMutex
 	ctrlTime     uint64
@@ -50,61 +52,32 @@ type DiscoveryManager struct {
 	allow        *PeerAllowList
 }
 
-// FIXME: exit loop on context close
-func (d *DiscoveryManager) listenForMeshEvents(ctx context.Context) {
-	defer log.WithName("disc").Eventf("discovery routine exited")
+func (d *DiscoveryManager) loadPeerFromMeshController(id string) (peerStatus, error) {
+	var status peerStatus
 
-	sub, _ := d.h.EventBus().Subscribe([]any{
-		new(event.EvtLocalAddressesUpdated),
-		new(event.EvtAutoRelayAddrsUpdated),
-		new(event.EvtLocalReachabilityChanged),
-		new(event.EvtHostReachableAddrsChanged),
-		new(event.EvtNATDeviceTypeChanged),
-		new(event.EvtPeerConnectednessChanged),
-		new(event.EvtPeerIdentificationCompleted),
-		new(event.EvtPeerIdentificationFailed),
-		new(event.EvtPeerProtocolsUpdated),
-		new(event.EvtLocalProtocolsUpdated),
-	})
-	for {
-		select {
-		case e := <-sub.Out():
-			switch ev := e.(type) {
-			case event.EvtPeerConnectednessChanged:
-				log.WithName("disc").Debugf("%T: %+v", e, ev)
-				if ev.Connectedness == network.Connected {
-					d.postEvent(peerEvent{
-						PeerID: ev.Peer.String(),
-						Status: PeerStatusUp,
-					})
-				} else {
-					d.postEvent(peerEvent{
-						PeerID: ev.Peer.String(),
-						Status: PeerStatusDown,
-					})
-				}
-			case event.EvtPeerIdentificationCompleted:
-				log.WithName("disc").Debugf("%T: %+v", e, ev)
-				d.postEvent(peerEvent{
-					PeerID: ev.Peer.String(),
-					Status: PeerStatusUp,
-				})
+	peerList, err := d.ctrl.GetPeers()
+	if err != nil {
+		log.WithName("disc").Warnf("failed to get peer map from controller: %v", err)
+		return status, err
+	}
 
-			case event.EvtHostReachableAddrsChanged:
-				log.WithName("disc").Debugf("%T: %+v", e, ev)
-				// Force an update from the system
-				//_ = d.onUpdate(core.PeerNode{ID: ""}, false)
-
-			default:
-				log.WithName("disc").Debugf("%T: %+v", e, ev)
+	for _, knownPeer := range peerList {
+		if knownPeer.ID == id {
+			status = peerStatus{
+				node:        knownPeer,
+				status:      PeerStatusConnecting,
+				needsUpdate: true,
 			}
-		case <-ctx.Done():
-			return
+			if d.allow != nil {
+				d.allow.Add(knownPeer.ID)
+			}
+			return status, nil
 		}
 	}
+	return status, fmt.Errorf("peer %s not allowed", id)
 }
 
-func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
+func (d *DiscoveryManager) updatePeersFromAdmin() error {
 	valid, ctrlTime, err := d.registration.Refresh()
 	if err != nil {
 		log.WithName("disc").Errorf("failed to refresh registration: %v", err)
@@ -141,75 +114,206 @@ func (d *DiscoveryManager) loadPeersFromMeshController() map[string]peerStatus {
 		d.allow.ReplaceMembers(ids)
 	}
 
-	peerUpdates := make(map[string]peerStatus)
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
 	// update all our known node database to what we just found
+	latestNodes := make(map[string]peerStatus)
 	for _, peer := range peerList {
-		knownPeer, ok := d.knownPeers[peer.ID]
+		d.lock.Lock()
+		knownStatus, ok := d.knownPeers[peer.ID]
+		d.lock.Unlock()
 		if !ok {
-			knownPeer = peerStatus{
+			knownStatus = peerStatus{
 				node:        peer,
-				ltime:       peer.LogicalTime,
-				status:      PeerStatusUnknown, // will probe
+				status:      PeerStatusConnecting, // will probe
 				needsUpdate: true,
 			}
-			log.WithName("disc").Eventf("ctrl reports new peer %s", knownPeer.node)
+
+			// we are ourselves, and our status never updates
+			if peer.ID == d.h.ID().String() {
+				knownStatus.status = PeerStatusUp
+				knownStatus.needsUpdate = false
+			}
+		}
+		newStatus := knownStatus.status
+
+		if peer.InstanceId == "" {
+			// controller knows nothing about this peer
+			newStatus = PeerStatusDown
+		} else if knownStatus.node.InstanceId == "" {
+			newStatus = PeerStatusConnecting
 		}
 
-		if knownPeer.ltime != peer.LogicalTime {
-			log.WithName("disc").Debugf("ctrl reports ltime change for peer %s  (%v!=%v)", knownPeer.node, knownPeer.ltime, peer.LogicalTime)
-			knownPeer.needsUpdate = true
-			knownPeer.ltime = peer.LogicalTime
-		}
+		// newStatus = PeerStatusUnknown
 
-		if knownPeer.needsUpdate {
-			peerUpdates[peer.ID] = knownPeer
-		}
+		log.WithName("disc").Debugf("ctrl reports peer %s (status:%d/%s)", knownStatus.node, newStatus, peer.InstanceId)
 
-		log.WithName("disc").Debugf("ctrl reports peer %s NeedsUpdate: %v", knownPeer.node, knownPeer.needsUpdate)
+		knownStatus = d.updatePeer(knownStatus, newStatus)
+
+		knownStatus.node.LastUpdate = peer.LastUpdate
+		knownStatus.node.LogicalTime = peer.LogicalTime
+		knownStatus.node.InstanceId = peer.InstanceId
+
+		d.lock.Lock()
+		d.knownPeers[peer.ID] = knownStatus
+		d.lock.Unlock()
+		latestNodes[peer.ID] = knownStatus
 	}
 
-	/* FIXME: remove nodes the controller does not want anymore
-	for peerID := range d.knownPeers {
-		if _, ok := peerUpdates[peerID]; !ok {
-			knownPeer := d.knownPeers[peerID]
-			knownPeer.status = PeerStatusRemoved
-			peerUpdates[peerID] = knownPeer
-		}
-	}*/
+	// 1 If a knownPeer is in the list of all nodes we got from the admin server
+	// 2. If a node is in our knownNodes, but not in the admin node list.. it was kicked!
+	d.lock.Lock()
+	for k := range d.knownPeers {
+		delete(latestNodes, k)
+	}
+	d.lock.Unlock()
+
+	// latestNodes should now contain only nodes that are NOT in knownPeers
+	for k, v := range latestNodes {
+		log.WithName("disc").Warnf("ctrl reports peer %s [HAS BEEN KICKED]", v.node)
+		_ = d.updatePeer(v, PeerStatusRemoved)
+		d.lock.Lock()
+		delete(d.knownPeers, k)
+		d.lock.Unlock()
+		d.allow.Remove(k)
+	}
+
 	d.ctrlTime = ctrlTime
-	return peerUpdates
+	return nil
 }
 
-func (d *DiscoveryManager) updatePeers(peerUpdates map[string]peerStatus) {
-	for k, newState := range peerUpdates {
-		// Ignore self forom the per update list
-		if newState.node.ID == d.node.ID {
-			newState.needsUpdate = false
-			newState.status = PeerStatusUp
-			peerUpdates[k] = newState
-			continue
-		}
+// TODO: encode this in a staste engine
 
-		bRemove := false
-		if newState.status == PeerStatusRemoved || newState.status == PeerStatusDown {
-			bRemove = true
-		}
+//	FROM
+//	PeerStatusSync           |
+//	PeerStatusUnknown        |
+//	PeerStatusUnreachable    |
+//	PeerStatusDown           |
+//	PeerStatusRemoved        |
+//
+// this is all serialized via the listenForChangesChannel
 
-		if err := d.onUpdate(newState.node, bRemove); err == nil {
-			newState.needsUpdate = false
-			if !bRemove {
-				newState.status = PeerStatusUp
-			}
-			peerUpdates[k] = newState
+type stateUpdateFunc func(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus
+
+func stateUpdateNoop(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	return currentStatus
+}
+
+func stateUpdateTryConnect(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	err := d.onUpdate(currentStatus.node, newStatus)
+	if err == nil {
+		currentStatus.status = PeerStatusUp
+		currentStatus.needsUpdate = false
+	} else {
+		currentStatus.needsUpdate = true // retry
+	}
+	return currentStatus
+}
+
+func stateUpdateTrySync(d *DiscoveryManager, currentStatus peerStatus, newStatus int) peerStatus {
+	_ = d.onUpdate(currentStatus.node, newStatus)
+	return currentStatus
+}
+
+var stateEngine = map[int]map[int]stateUpdateFunc{
+	PeerStatusDown: {
+		PeerStatusDown:       stateUpdateNoop,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+	PeerStatusConnecting: {
+		PeerStatusDown:       stateUpdateTrySync,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+	PeerStatusUp: {
+		PeerStatusUp:         stateUpdateNoop,
+		PeerStatusDown:       stateUpdateTrySync,
+		PeerStatusConnecting: stateUpdateTryConnect,
+		PeerStatusRemoved:    stateUpdateTrySync,
+		PeerStatusSync:       stateUpdateTrySync,
+	},
+
+	// there should never be a current status removed
+	//PeerStatusRemoved: {
+	//}
+	// there should never be a current status sync
+	//PeerStatusSync:
+}
+
+func (d *DiscoveryManager) updatePeer(currentStatus peerStatus, newStatus int) peerStatus {
+	if currentStatus.node.ID == d.h.ID().String() {
+		// ignore self in updates
+		return currentStatus
+	}
+
+	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v --> %d?", currentStatus.node, currentStatus.status, currentStatus.needsUpdate, newStatus)
+	current, ok := stateEngine[currentStatus.status]
+	assert.True(ok)
+	if !ok {
+		log.WithName("discovery").Errorf("invalid current state %d", currentStatus.status)
+		return currentStatus
+	}
+
+	action, ok := current[newStatus]
+	assert.True(ok)
+	if !ok {
+		log.WithName("discovery").Errorf("invalid state stansition %d - > %d", currentStatus.status, newStatus)
+		return currentStatus
+	}
+
+	status := action(d, currentStatus, newStatus)
+	log.WithName("discovery").Debugf("updatePeer(%s) %v N:%v === %d", currentStatus.node, currentStatus.status, currentStatus.needsUpdate, newStatus)
+	return status
+}
+
+// updates can only happen in one thread/goroutine from listenForPeerUpdates
+func (d *DiscoveryManager) updatePeerStatus(peerID string, status int) error {
+	var err error
+
+	d.lock.Lock()
+	knownStatus, ok := d.knownPeers[peerID]
+	d.lock.Unlock()
+	if !ok {
+		knownStatus, err = d.loadPeerFromMeshController(peerID)
+		if err != nil {
+			log.WithName("disc").Warnf("failed to load peer %s from mesh controller: %v", peerID, err)
+			return err
 		}
 	}
 
+	knownStatus = d.updatePeer(knownStatus, status)
 	d.lock.Lock()
-	maps.Copy(d.knownPeers, peerUpdates)
+	d.knownPeers[peerID] = knownStatus
 	d.lock.Unlock()
+	return nil
+}
+
+func (d *DiscoveryManager) fromHostEvent(e any) (PeerEvent, bool) {
+	switch ev := e.(type) {
+	case event.EvtPeerConnectednessChanged:
+		peerEvent := PeerEvent{
+			PeerID: ev.Peer.String(),
+		}
+
+		log.WithName("disc").Debugf("%T: %+v", e, ev)
+		switch ev.Connectedness {
+		case network.Connected:
+			peerEvent.Status = PeerStatusConnecting
+		case network.Limited:
+			peerEvent.Status = PeerStatusConnecting
+		case network.NotConnected:
+			peerEvent.Status = PeerStatusConnecting
+		default:
+			return PeerEvent{}, false
+		}
+		return peerEvent, true
+
+	default:
+		log.WithName("disc").Debugf("%T: %+v", e, ev)
+
+	}
+	return PeerEvent{}, false
 }
 
 func (d *DiscoveryManager) listenForPeerUpdates(ctx context.Context) {
@@ -229,57 +333,90 @@ func (d *DiscoveryManager) listenForPeerUpdates(ctx context.Context) {
 
 	// initial seed from controller
 	log.WithName("disc").Debugf("loading peer nodes from controller")
-	d.updatePeers(d.loadPeersFromMeshController())
+	_ = d.updatePeersFromAdmin()
 
-	go d.listenForMeshEvents(ctx)
+	dnsSource := NewMDNSEventSource(d.h)
+	//go d.listenForMeshEvents(ctx)
 	if d.MDNSEnabled {
 		go func() {
 			time.Sleep(time.Second * 1) // stall to make sure we fail initial proxy bootstrap
-			err := EnableMDNS(d)
-			if err != nil {
-				log.Warnf("MDNS Failed to start %v\n", err)
+			if err := dnsSource.Start(); err != nil {
+				log.Panicf("MDNS Failed to start %v\n", err)
 			}
+			log.WithName("disc").Debugf("MDNS started")
 		}()
 	}
 
-	for {
-		peerUpdates := make(map[string]peerStatus)
+	hostSub, _ := d.h.EventBus().Subscribe([]any{
+		new(event.EvtLocalAddressesUpdated),
+		new(event.EvtAutoRelayAddrsUpdated),
+		new(event.EvtLocalReachabilityChanged),
+		new(event.EvtHostReachableAddrsChanged),
+		new(event.EvtNATDeviceTypeChanged),
+		new(event.EvtPeerConnectednessChanged),
+		new(event.EvtPeerIdentificationCompleted),
+		new(event.EvtPeerIdentificationFailed),
+		new(event.EvtPeerProtocolsUpdated),
+		new(event.EvtLocalProtocolsUpdated),
+	})
 
+	for {
 		select {
+		case e := <-hostSub.Out():
+			evt, ok := d.fromHostEvent(e)
+			if !ok {
+				continue
+			}
+			log.WithName("disc").Eventf("P2P HOST Event: Node: %s Status:%d", evt.PeerID, evt.Status)
+			_ = d.updatePeerStatus(evt.PeerID, evt.Status)
+			continue
+
+		case evt := <-dnsSource.Out():
+			log.WithName("disc").Eventf("MDNS Event: Node: %s Status:%d", evt.PeerID, evt.Status)
+			_ = d.updatePeerStatus(evt.PeerID, evt.Status)
+			continue
+
+		// Rename discovery to system events
 		case evt := <-d.discoveryEvents:
 			if evt.PeerID == d.node.ID {
 				// force a refresh of parents
 				log.WithName("disc").Eventf("signaling update for self")
+				err := d.events.ForceUpdate()
+				if err != nil {
+					log.WithName("disc").Warnf("failed to force update via mesh pub: %v", err)
+				}
+
 				err = d.registration.SignalUpdate()
 				if err != nil {
-					log.Warnf("failed to signal update: %v", err)
+					log.WithName("disc").Warnf("failed to signal update: %v", err)
 				}
 				continue
 			}
 
-			log.WithName("disc").Eventf("peer event %+v", evt)
-			d.lock.Lock()
-			knownPeer, ok := d.knownPeers[evt.PeerID]
-			d.lock.Unlock()
-			if ok {
-				knownPeer.needsUpdate = true
-				knownPeer.status = evt.Status
-				peerUpdates[knownPeer.node.ID] = knownPeer
-			} else {
-				peerUpdates = d.loadPeersFromMeshController()
-			}
+			log.WithName("disc").Eventf("LOCAL Event: Node: %s Status:%d", evt.PeerID, evt.Status)
+			_ = d.updatePeerStatus(evt.PeerID, evt.Status)
+			continue
+
+		// from mesh topics, we have a bunch of stuff collapsing into the same code paths here including the other
+		// topic watcher, should just unify this whole thing
+		case evt := <-d.events.Out():
+			log.WithName("disc").Eventf("MESH Event: Node: %s Status:%d", evt.PeerID, evt.Status)
+			_ = d.updatePeerStatus(evt.PeerID, evt.Status)
+			continue
 
 		case <-time.After(time.Minute):
-			peerUpdates = d.loadPeersFromMeshController()
+			log.WithName("disc").Eventf("ADMIN EVENT: ")
+			_ = d.updatePeersFromAdmin()
+			continue
+
 		case <-ctx.Done():
 			log.WithName("disc").Eventf("DiscoveryManager stopped")
 			return
 		}
-		d.updatePeers(peerUpdates)
 	}
 }
 
-func (d *DiscoveryManager) postEvent(event peerEvent) {
+func (d *DiscoveryManager) postEvent(event PeerEvent) {
 	d.discoveryEvents <- event
 }
 
@@ -289,7 +426,10 @@ func (d *DiscoveryManager) GetPeerMap() (map[string]api.Node, error) {
 	d.lock.RLock()
 	defer d.lock.RUnlock()
 	for k, v := range d.knownPeers {
-		peerMap[k] = v.node
+		node := v.node
+		node.Status = v.status
+		peerMap[k] = node
+
 	}
 	return peerMap, nil
 }
@@ -300,19 +440,28 @@ func (d *DiscoveryManager) UpdateHandler(onUpdate core.UpdateHandlerFunc) {
 
 func (d *DiscoveryManager) Serve(ctx context.Context) error {
 	go d.listenForPeerUpdates(ctx)
+	if err := d.events.ForceUpdate(); err != nil {
+		log.WithName("evt").Eventf("Failed to force update: %v", err)
+	}
 
 	<-ctx.Done()
 	return nil
 }
 
 func NewDiscoveryManager(a *api.MeshClient, h host.Host, node core.PeerNode, MDNSEnabled bool, allow *PeerAllowList) *DiscoveryManager {
+	ev, err := NewEventManager(h)
+	if err != nil {
+		log.WithName("evt").Eventf("Failed to create event manager: %v", err)
+		return nil
+	}
 	return &DiscoveryManager{
 		ctrl:            a,
 		h:               h,
 		node:            node,
 		MDNSEnabled:     MDNSEnabled,
-		discoveryEvents: make(chan peerEvent, 64),
+		discoveryEvents: make(chan PeerEvent, 64),
 		knownPeers:      make(map[string]peerStatus),
 		allow:           allow,
+		events:          ev,
 	}
 }

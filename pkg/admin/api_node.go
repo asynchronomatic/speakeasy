@@ -1,19 +1,16 @@
 package admin
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
-	"uuid"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/asynchronomatic/speakeasy/api"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/auth"
 	"github.com/asynchronomatic/speakeasy/pkg/admin/magiclink"
-	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonrpc"
 	"github.com/asynchronomatic/speakeasy/pkg/log"
 )
@@ -33,6 +30,7 @@ func init() {
 	dummyLoginHash = h
 }
 
+// @deprecated nobody should be calling this anymore
 func (s *Server) apiNodeAuthorize(ctx *jsonrpc.RPC) error {
 	var req api.RegisterNodeRequest
 	if err := ctx.GetObject(&req); err != nil {
@@ -46,7 +44,7 @@ func (s *Server) apiNodeAuthorize(ctx *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is bad")
 	}
 
-	s.acl.Add(req.Node.ID)
+	s.nodeStore.AddNode(req.Node, "", "")
 	return ctx.ReplyObject(&req.Node)
 }
 
@@ -63,38 +61,28 @@ func (s *Server) apiNodeRegister(ctx *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is required")
 	}
 
-	if !s.acl.Has(req.Node.ID) {
-		return jsonrpc.NewError(http.StatusBadRequest, "node not Authorized")
-	}
-
 	if req.Node.ID != ctx.User() && ctx.Group() != AdminGroup {
 		return jsonrpc.NewError(http.StatusBadRequest, "node peer id is bad")
 	}
 
-	s.lock.Lock()
-	s.lastUpdate = time.Now()
-	s.logicalTime++
+	instanceId, logicalTime, err := s.nodeStore.Register(req.Node.ID)
+	if err != nil {
+		return jsonrpc.NewError(http.StatusBadRequest, err.Error())
+	}
 
-	req.Node.LastUpdate = s.lastUpdate
-	req.Node.LogicalTime = s.logicalTime
+	req.Node.InstanceId = instanceId
+	req.Node.LastUpdate = time.Now() // deprecate
+	req.Node.LogicalTime = logicalTime
 
 	resp := api.RegisterNodeRequest{
 		Node: req.Node,
 		// this is just needed so that if the node registered we can tell it has a new instance
 		// it has nothing to do with auth i'm probably overthinking this
-		InstanceID:  uuid.New().String(),
-		LastUpdate:  s.lastUpdate,
-		LogicalTime: s.logicalTime,
+		InstanceID:  instanceId,
+		LastUpdate:  req.Node.LastUpdate, // deprecate
+		LogicalTime: req.Node.LogicalTime,
 	}
-
-	s.nodes[req.Node.ID] = &NodeReference{
-		Node:       req.Node,
-		LastPing:   time.Now(),
-		InstanceID: resp.InstanceID,
-	}
-	s.lock.Unlock()
 	log.Infof("registered node %s", resp.Node.ID)
-
 	return ctx.ReplyObject(&resp)
 }
 
@@ -118,46 +106,20 @@ func (s *Server) apiNodeRefresh(ctx *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "node id mismatch")
 	}
 
-	updateNode := func(req *api.RegisterNodeRequest) bool {
-		if req.InstanceID == "" {
-			log.Errorf("node token is required for %s", id)
-			return false
-		}
+	invalidate := false
+	if !req.LastUpdate.IsZero() {
+		invalidate = true
+	}
 
-		ref, ok := s.nodes[id]
-		if !ok {
-			log.Errorf("node not found %s", id)
-			return false
-		}
-
-		if ref.InstanceID != req.InstanceID {
-			log.Errorf("token mismatch in refresh for %s", id)
-			return false
-		}
-
-		// Node requested update
-		if !req.LastUpdate.IsZero() {
-			log.Errorf("node %s requested update", id)
-			s.logicalTime++
-			ref.Node.LogicalTime++
-		}
-
-		ref.LastPing = time.Now()
-		return true
+	valid, _ := s.nodeStore.RefreshNode(id, req.InstanceID, invalidate)
+	if !valid {
+		return jsonrpc.NewError(http.StatusConflict, "node registration invalid")
 	}
 
 	resp := api.RegisterNodeRequest{
-		Node:       req.Node,
-		InstanceID: req.InstanceID,
-	}
-	s.lock.Lock()
-	valid := updateNode(&req)
-	resp.LogicalTime = s.logicalTime
-	resp.LastUpdate = s.lastUpdate
-	s.lock.Unlock()
-
-	if !valid {
-		return jsonrpc.NewError(http.StatusConflict, "node registration invalid")
+		Node:        req.Node,
+		InstanceID:  req.InstanceID,
+		LogicalTime: s.nodeStore.LogicalTime(),
 	}
 
 	return ctx.ReplyObject(&resp)
@@ -176,33 +138,23 @@ func (s *Server) apiNodeUnregister(ctx *jsonrpc.RPC) error {
 		return jsonrpc.NewError(http.StatusBadRequest, "invalid node")
 	}
 
-	s.lock.Lock()
-	node, ok := s.nodes[id]
-	if ok {
-		s.lastUpdate = time.Now()
-		s.logicalTime++
-	}
-	delete(s.nodes, id)
-	s.lock.Unlock()
-
-	if !ok {
+	if err := s.nodeStore.Unregister(id); err != nil {
 		return jsonrpc.NewError(http.StatusNotFound, "node not found")
 	}
-
-	s.acl.Remove(id)
+	node := api.Node{
+		ID: id,
+	}
 	return ctx.ReplyObject(&node)
 }
 
 func (s *Server) apiNodeList(ctx *jsonrpc.RPC) error {
-	s.lock.Lock()
 	resp := api.ListNodesResponse{
-		Nodes: make([]api.Node, 0, len(s.nodes)),
+		Nodes: s.nodeStore.NodeList(),
 	}
 
-	for _, ref := range s.nodes {
+	s.nodeStore.List(func(ref *NodeReference) {
 		resp.Nodes = append(resp.Nodes, ref.Node)
-	}
-	s.lock.Unlock()
+	})
 
 	return ctx.ReplyObject(&resp)
 }
@@ -211,8 +163,7 @@ func (s *Server) apiRelayGet(ctx *jsonrpc.RPC) error {
 	s.lock.Lock()
 	resp := api.GetRelayResponse{
 		MultiAddress: s.relayAddress,
-		LastUpdate:   s.lastUpdate,
-		LogicalTime:  s.logicalTime,
+		LogicalTime:  s.nodeStore.LogicalTime(),
 	}
 	s.lock.Unlock()
 
@@ -252,10 +203,12 @@ func (s *Server) sessionClaims(token string) (*sessionClaims, error) {
 		return nil, errors.New("invalid session")
 	}
 	if claims.Expires == 0 || time.Now().Unix() >= claims.Expires {
+		log.WithName("auth").Warnf("session expired %s", claims.NodeID)
 		return nil, errors.New("session expired")
 	}
-	if s.acl == nil || !s.acl.Has(claims.NodeID) {
-		return nil, errors.New("session revoked")
+	if !s.GetAllowList().Has(claims.NodeID) {
+		log.WithName("auth").Warnf("node not authorized %s", claims.NodeID)
+		return nil, jsonrpc.NewError(http.StatusForbidden, "no authorization")
 	}
 	return &claims, nil
 }
@@ -281,20 +234,8 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 		meshID = "default"
 	}
 
-	var rec meshNodeRecord
-
-	if err := s.kv.Get(meshNodeKVKey(meshID, req.NodeID), &rec); err != nil {
-		// fake compare in the fail path to not allow attacker to determine miss/hit on nodeID
-		_ = bcrypt.CompareHashAndPassword(dummyLoginHash, []byte(req.MeshSecret))
-		if errors.Is(err, jsonkv.ErrNotFound) {
-			return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
-		}
+	if err := s.nodeStore.NodeLogin(req.NodeID, req.MeshSecret); err != nil {
 		return err
-	}
-
-	mismatch := bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(req.MeshSecret)) != nil
-	if mismatch {
-		return jsonrpc.NewError(http.StatusUnauthorized, "invalid credentials")
 	}
 
 	token, expires, err := s.issueSessionToken(req.NodeID, SessionTokenTTL)
@@ -302,36 +243,9 @@ func (s *Server) apiNodeLogin(ctx *jsonrpc.RPC) error {
 		return err
 	}
 
-	s.acl.Add(req.NodeID)
-
 	return ctx.ReplyObject(&api.NodeLoginResponse{
 		Token:   token,
 		NodeID:  req.NodeID,
 		Expires: expires,
 	})
-}
-
-// nodeExpiryCheckInterval defines the interval for checking and expiring stale node registrations.
-const nodeExpiryCheckInterval = 5 * time.Minute
-
-// nodeExpiry defines the duration after which a node is considered stale and eligible for expiration.
-const nodeExpiry = 15 * time.Minute
-
-func (s *Server) runExpireNodes(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(nodeExpiryCheckInterval):
-			now := time.Now()
-			s.lock.Lock()
-			for k, v := range s.nodes {
-				if now.Sub(v.LastPing) > nodeExpiry {
-					log.WithName("admin").Infof("expiring stale registration for node %s", k)
-					delete(s.nodes, k)
-				}
-			}
-			s.lock.Unlock()
-		}
-	}
 }

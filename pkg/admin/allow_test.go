@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewAllowListEmptyPath(t *testing.T) {
-	l, err := NewAllowList()
-	if err != nil {
-		t.Fatal(err)
-	}
+	l := NewAllowList()
+	require.NotNil(t, l)
+
 	if l.Has("anyone") {
 		t.Fatal("empty allow list should deny")
 	}
@@ -25,10 +26,8 @@ func TestNewAllowListEmptyPath(t *testing.T) {
 }
 
 func TestAllowListAddRemoveMemory(t *testing.T) {
-	l, err := NewAllowList()
-	if err != nil {
-		t.Fatal(err)
-	}
+	l := NewAllowList()
+	require.NotNil(t, l)
 
 	l.Add("peer-1")
 	if !l.Has("peer-1") {
@@ -46,10 +45,8 @@ func TestAllowListAddRemoveMemory(t *testing.T) {
 }
 
 func TestAllowListConcurrent(t *testing.T) {
-	l, err := NewAllowList()
-	if err != nil {
-		t.Fatal(err)
-	}
+	l := NewAllowList()
+	require.NotNil(t, l)
 
 	var wg sync.WaitGroup
 	for i := range 32 {

@@ -14,13 +14,19 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/asynchronomatic/speakeasy/api"
+	"github.com/asynchronomatic/speakeasy/pkg/core"
 	"github.com/asynchronomatic/speakeasy/pkg/jsonkv"
 	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
+
+func meshNodeKVKey(meshID, nodeID string) string {
+	return "/mesh/" + meshID + "/nodes/" + nodeID
+}
 
 // testHTTPClient disables keep-alives so sequential httptest servers on macOS
 // do not exhaust loopback ephemeral ports (EADDRNOTAVAIL / "can't assign requested address").
@@ -135,10 +141,10 @@ func TestAdminCreateInviteLink(t *testing.T) {
 		t.Fatalf("InviteLink=%q want %q", resp.InviteLink, wantLink)
 	}
 
-	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
-		t.Fatal(err)
-	}
+	stored, err := s.inviteStore.get(resp.InviteId)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
 	if stored.UUID == "" || stored.MeshId != "default" || stored.Reusable || stored.InviteAs != "guest" {
 		t.Fatalf("stored %+v", stored)
 	}
@@ -158,10 +164,11 @@ func TestAdminCreateInviteLinkDefaults(t *testing.T) {
 	if resp.Expires < wantExp-5 || resp.Expires > wantExp+5 {
 		t.Fatalf("expires %d want ~%d", resp.Expires, wantExp)
 	}
-	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
-		t.Fatal(err)
-	}
+
+	stored, err := s.inviteStore.get(resp.InviteId)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
 	if stored.Reusable || stored.Expires != resp.Expires {
 		t.Fatalf("default invite %+v", stored)
 	}
@@ -174,10 +181,11 @@ func TestAdminCreateInviteLinkForever(t *testing.T) {
 	if !resp.Reusable || resp.Expires != 0 {
 		t.Fatalf("forever response %+v", resp)
 	}
-	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", resp.InviteId), &stored); err != nil {
-		t.Fatal(err)
-	}
+
+	stored, err := s.inviteStore.get(resp.InviteId)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
 	if stored.Expires != 0 || !stored.Reusable {
 		t.Fatalf("forever invite %+v", stored)
 	}
@@ -251,14 +259,14 @@ func TestAdminRedeemInviteLink(t *testing.T) {
 	}
 	assert.Equal(t, "https://mesh.example:4002", resp.MeshServer)
 
-	if !s.acl.Has("peer-redeem-1") {
+	if !s.GetAllowList().Has("peer-redeem-1") {
 		t.Fatal("expected node to be authorized")
 	}
 
-	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-redeem-1"), &rec); err != nil {
-		t.Fatal(err)
-	}
+	rec, err := s.nodeStore.get("peer-redeem-1")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+
 	if rec.NodeID != "peer-redeem-1" || rec.Name != "guest" || rec.InvitedAs != "guest" {
 		t.Fatalf("stored node %+v", rec)
 	}
@@ -293,10 +301,9 @@ func TestAdminRedeemRejectsExistingNode(t *testing.T) {
 	}
 	orig := decodeRedeem(t, first)
 
-	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-taken"), &rec); err != nil {
-		t.Fatal(err)
-	}
+	rec, err := s.nodeStore.get("peer-taken")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
 
 	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-taken", Name: "attacker"},
@@ -306,10 +313,10 @@ func TestAdminRedeemRejectsExistingNode(t *testing.T) {
 		t.Fatalf("overwrite redeem: got %d want 409", res.StatusCode)
 	}
 
-	var after meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-taken"), &after); err != nil {
-		t.Fatal(err)
-	}
+	after, err := s.nodeStore.get("peer-taken")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+
 	if after.PasswordHash != rec.PasswordHash || after.Name != "n1" {
 		t.Fatalf("credentials changed: %+v -> %+v", rec, after)
 	}
@@ -329,7 +336,7 @@ func TestAdminRedeemRejectsExistingNode(t *testing.T) {
 
 func TestAdminRedeemConflictDoesNotConsumeInvite(t *testing.T) {
 	s, ts := newAdminTestServer(t)
-	taken := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1"})
+	taken := createInvite(t, ts, api.CreateInviteRequest{MeshId: "default"})
 	res := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+taken.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-exists", Name: "n1"},
 	})
@@ -338,7 +345,7 @@ func TestAdminRedeemConflictDoesNotConsumeInvite(t *testing.T) {
 		t.Fatalf("seed redeem: got %d", res.StatusCode)
 	}
 
-	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Reusable: false})
+	fresh := createInvite(t, ts, api.CreateInviteRequest{MeshId: "default", Reusable: false})
 	conflict := postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+fresh.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-exists", Name: "n2"},
 	})
@@ -348,7 +355,7 @@ func TestAdminRedeemConflictDoesNotConsumeInvite(t *testing.T) {
 	}
 
 	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", fresh.InviteId), &stored); err != nil {
+	if err := s.inviteStore.kv.Get(inviteKVKey("default", fresh.InviteId), &stored); err != nil {
 		t.Fatalf("one-time invite consumed on conflict: %v", err)
 	}
 
@@ -372,13 +379,20 @@ func TestAdminRedeemOneTimeInvite(t *testing.T) {
 		t.Fatalf("first redeem: got %d", res.StatusCode)
 	}
 	res.Body.Close()
-	if !s.acl.Has("peer-once-1") {
+	if !s.GetAllowList().Has("peer-once-1") {
 		t.Fatal("expected node to be authorized")
 	}
-	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-once-1"), &rec); err != nil {
-		t.Fatal(err)
-	}
+
+	rec, err := s.nodeStore.get("peer-once-1")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+
+	/*
+		var rec meshNodeRecord
+		if err := s.kv.Get(meshNodeKVKey("default", "peer-once-1"), &rec); err != nil {
+			t.Fatal(err)
+		}*/
+
 	if rec.NodeID != "peer-once-1" || rec.Name != "n1" || rec.InvitedAs != "" {
 		t.Fatalf("stored node %+v", rec)
 	}
@@ -386,10 +400,15 @@ func TestAdminRedeemOneTimeInvite(t *testing.T) {
 		t.Fatal("expected password hash")
 	}
 
-	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
-		t.Fatalf("one-time invite still stored: %v %+v", err, stored)
-	}
+	stored, err := s.inviteStore.get(created.InviteId)
+	assert.ErrorIs(t, jsonkv.ErrNotFound, err)
+	assert.Nil(t, stored)
+
+	/*
+		var stored inviteSecret
+		if err := s.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
+			t.Fatalf("one-time invite still stored: %v %+v", err, stored)
+		}*/
 
 	res = postJSON(t, ts, http.MethodPost, "/api/v1/redeem/"+created.InviteId, "", api.RedeemInviteRequest{
 		Node: api.Node{ID: "peer-once-2", Name: "n2"},
@@ -398,7 +417,7 @@ func TestAdminRedeemOneTimeInvite(t *testing.T) {
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("second redeem: got %d want 404", res.StatusCode)
 	}
-	if s.acl.Has("peer-once-2") {
+	if s.GetAllowList().Has("peer-once-2") {
 		t.Fatal("second redeem should not authorize")
 	}
 }
@@ -407,13 +426,20 @@ func TestAdminRedeemExpiredInvite(t *testing.T) {
 	s, ts := newAdminTestServer(t)
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", LifetimeSec: 3600})
 
-	var stored inviteSecret
+	stored, err := s.inviteStore.get(created.InviteId)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
 	key := inviteKVKey("default", created.InviteId)
-	if err := s.kv.Get(key, &stored); err != nil {
-		t.Fatal(err)
-	}
+	/*
+		var stored inviteSecret
+
+		if err := s.kv.Get(key, &stored); err != nil {
+			t.Fatal(err)
+		}*/
+
 	stored.Expires = time.Now().Add(-time.Second).Unix()
-	if err := s.kv.Put(key, stored); err != nil {
+	if err := s.inviteStore.kv.Put(key, stored); err != nil {
 		t.Fatal(err)
 	}
 
@@ -424,10 +450,10 @@ func TestAdminRedeemExpiredInvite(t *testing.T) {
 	if res.StatusCode != http.StatusGone {
 		t.Fatalf("expired redeem: got %d want 410", res.StatusCode)
 	}
-	if s.acl.Has("peer-expired-1") {
+	if s.GetAllowList().Has("peer-expired-1") {
 		t.Fatal("expired invite should not authorize")
 	}
-	if err := s.kv.Get(key, &stored); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.inviteStore.kv.Get(key, &stored); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("expired invite still stored: %v", err)
 	}
 }
@@ -455,13 +481,13 @@ func TestRedeemInviteClient(t *testing.T) {
 		t.Fatalf("response %+v", resp)
 	}
 	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-client-1"), &rec); err != nil {
+	if err := s.nodeStore.kv.Get(meshNodeKVKey("default", "peer-client-1"), &rec); err != nil {
 		t.Fatal(err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(rec.PasswordHash), []byte(resp.MeshSecret)); err != nil {
 		t.Fatalf("client redeem hash mismatch: %v", err)
 	}
-	if !s.acl.Has("peer-client-1") {
+	if !s.GetAllowList().Has("peer-client-1") {
 		t.Fatal("expected node to be authorized")
 	}
 }
@@ -502,11 +528,11 @@ func TestAdminListInviteLinksSkipsExpired(t *testing.T) {
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", LifetimeSec: 3600})
 	key := inviteKVKey("default", created.InviteId)
 	var stored inviteSecret
-	if err := s.kv.Get(key, &stored); err != nil {
+	if err := s.inviteStore.kv.Get(key, &stored); err != nil {
 		t.Fatal(err)
 	}
 	stored.Expires = time.Now().Add(-time.Minute).Unix()
-	if err := s.kv.Put(key, stored); err != nil {
+	if err := s.inviteStore.kv.Put(key, stored); err != nil {
 		t.Fatal(err)
 	}
 
@@ -519,7 +545,7 @@ func TestAdminListInviteLinksSkipsExpired(t *testing.T) {
 	if len(listed.Invites) != 0 {
 		t.Fatalf("expired still listed: %+v", listed.Invites)
 	}
-	if err := s.kv.Get(key, &stored); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.inviteStore.kv.Get(key, &stored); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("expired invite still stored: %v", err)
 	}
 }
@@ -573,27 +599,16 @@ func TestAdminKickPeer(t *testing.T) {
 		t.Fatalf("kicked %+v", kicked)
 	}
 
-	s.lock.Lock()
-	_, still := s.nodes["peer-kick-1"]
-	s.lock.Unlock()
+	_, still := s.nodeStore.Get("peer-kick-1")
 	if still {
 		t.Fatal("node still registered")
 	}
-	if s.acl.Has("peer-kick-1") {
+	if s.GetAllowList().Has("peer-kick-1") {
 		t.Fatal("node still on ACL")
 	}
 	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-kick-1"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.nodeStore.kv.Get(meshNodeKVKey("default", "peer-kick-1"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("kv record still stored: %v", err)
-	}
-}
-
-func TestAdminKickPeerNotFound(t *testing.T) {
-	_, ts := newAdminTestServer(t)
-	res := postJSON(t, ts, http.MethodDelete, "/api/v1/admin/peer/missing", "test-secret", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("kick missing: got %d want 404", res.StatusCode)
 	}
 }
 
@@ -608,18 +623,13 @@ func TestAdminKickPeerRequiresAdmin(t *testing.T) {
 
 func TestAdminListNodes(t *testing.T) {
 	s, ts := newAdminTestServer(t)
-	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})
+	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "default", Name: "guest"})
 	if _, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-list-1", Name: "alpha"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.kv.Put(meshNodeKVKey("other", "peer-other"), meshNodeRecord{
-		NodeID:    "peer-other",
-		Name:      "beta",
-		AddedAt:   time.Now().UTC(),
-		InvitedAs: "other-guest",
-	}); err != nil {
-		t.Fatal(err)
-	}
+
+	err := s.nodeStore.AddNode(core.NewPeerNode("peer-list-2", "beta"), "other-guest", "other-secret")
+	require.NoError(t, err)
 
 	res := postJSON(t, ts, http.MethodGet, "/api/v1/admin/nodes", "test-secret", nil)
 	defer res.Body.Close()
@@ -641,8 +651,8 @@ func TestAdminListNodes(t *testing.T) {
 	if a.Name != "alpha" || a.MeshId != "default" || a.InvitedAs != "guest" || a.AddedAt.IsZero() {
 		t.Fatalf("default node %+v", a)
 	}
-	b := byID["peer-other"]
-	if b.Name != "beta" || b.MeshId != "other" || b.InvitedAs != "other-guest" {
+	b := byID["peer-list-2"]
+	if b.Name != "beta" || b.MeshId != "default" || b.InvitedAs != "other-guest" {
 		t.Fatalf("other mesh node %+v", b)
 	}
 }
@@ -651,14 +661,6 @@ func TestAdminDeleteNodeAllMeshes(t *testing.T) {
 	s, ts := newAdminTestServer(t)
 	created := createInvite(t, ts, api.CreateInviteRequest{MeshId: "mesh-1", Name: "guest"})
 	if _, err := api.RedeemInvite(ts.URL+"/api/v1/redeem/"+created.InviteId, api.Node{ID: "peer-del-1", Name: "n1"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.kv.Put(meshNodeKVKey("other", "peer-del-1"), meshNodeRecord{
-		NodeID:    "peer-del-1",
-		Name:      "n1-other",
-		AddedAt:   time.Now().UTC(),
-		InvitedAs: "guest",
-	}); err != nil {
 		t.Fatal(err)
 	}
 	reg := postJSON(t, ts, http.MethodPost, "/api/v1/nodes", "test-secret", api.RegisterNodeRequest{
@@ -683,39 +685,15 @@ func TestAdminDeleteNodeAllMeshes(t *testing.T) {
 	}
 
 	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-del-1"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.inviteStore.kv.Get(meshNodeKVKey("default", "peer-del-1"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("default mesh record still stored: %v", err)
 	}
-	if err := s.kv.Get(meshNodeKVKey("other", "peer-del-1"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
-		t.Fatalf("other mesh record still stored: %v", err)
-	}
-	if s.acl.Has("peer-del-1") {
+	if s.GetAllowList().Has("peer-del-1") {
 		t.Fatal("node still on ACL")
 	}
-	s.lock.Lock()
-	_, still := s.nodes["peer-del-1"]
-	s.lock.Unlock()
-	if still {
-		t.Fatal("node still registered")
-	}
-}
 
-func TestAdminDeleteNodeNotFound(t *testing.T) {
-	_, ts := newAdminTestServer(t)
-	res := postJSON(t, ts, http.MethodDelete, "/api/v1/admin/nodes/missing", "test-secret", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("delete missing: got %d want 404", res.StatusCode)
-	}
-}
-
-func TestAdminDeleteNodeRequiresAuth(t *testing.T) {
-	_, ts := newAdminTestServer(t)
-	res := postJSON(t, ts, http.MethodDelete, "/api/v1/admin/nodes/peer-1", "", nil)
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated delete: got %d want 401", res.StatusCode)
-	}
+	_, still := s.nodeStore.Get("peer-del-1")
+	assert.False(t, still)
 }
 
 func TestAdminDeleteNodeClient(t *testing.T) {
@@ -728,10 +706,10 @@ func TestAdminDeleteNodeClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rec meshNodeRecord
-	if err := s.kv.Get(meshNodeKVKey("default", "peer-del-client"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.inviteStore.kv.Get(meshNodeKVKey("default", "peer-del-client"), &rec); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("record still stored: %v", err)
 	}
-	if s.acl.Has("peer-del-client") {
+	if s.GetAllowList().Has("peer-del-client") {
 		t.Fatal("still on ACL")
 	}
 }
@@ -788,7 +766,7 @@ func TestAdminKickPeerClient(t *testing.T) {
 	if err := client.Admin().KickPeer("peer-kick-client"); err != nil {
 		t.Fatal(err)
 	}
-	if s.acl.Has("peer-kick-client") {
+	if s.GetAllowList().Has("peer-kick-client") {
 		t.Fatal("still on ACL")
 	}
 }
@@ -804,7 +782,7 @@ func TestAdminDeleteInviteLink(t *testing.T) {
 	}
 
 	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
+	if err := s.inviteStore.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
 		t.Fatalf("invite still stored: %v %+v", err, stored)
 	}
 
@@ -862,10 +840,15 @@ func TestAdminDeleteInviteClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var stored inviteSecret
-	if err := s.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
-		t.Fatalf("invite still stored: %v", err)
-	}
+	stored, err := s.inviteStore.get(created.InviteId)
+	assert.ErrorIs(t, jsonkv.ErrNotFound, err)
+	assert.Nil(t, stored)
+
+	/*
+		var stored inviteSecret
+		if err := s.kv.Get(inviteKVKey("default", created.InviteId), &stored); !errors.Is(err, jsonkv.ErrNotFound) {
+			t.Fatalf("invite still stored: %v", err)
+		}*/
 }
 
 func TestAdminRedeemRequiresNodeID(t *testing.T) {

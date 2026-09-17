@@ -9,6 +9,7 @@ import (
 	"github.com/jxskiss/base62"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/asynchronomatic/speakeasy/pkg/log"
 	"github.com/asynchronomatic/speakeasy/pkg/secrets"
 )
 
@@ -44,6 +45,7 @@ func (a *TokenAuth) DoAuth(w http.ResponseWriter, r *http.Request) (*Properties,
 		}
 		user, ok := a.session(token)
 		if !ok || user == nil {
+			log.WithName("auth").Eventf("Failed to authenticate session token: %s", token)
 			return nil, http.StatusUnauthorized
 		}
 		return user, http.StatusOK
