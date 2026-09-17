@@ -67,9 +67,11 @@ func (p *Proxy) meshMembers(rpc *jsonrpc.RPC) error {
 			if peer.Status == mesh.PeerStatusUp {
 				// FIXME: we can use a long lived connection, but then we need to know if it is long lived or not
 				client := NewMeshClient(peer.Name, p.mesh.ClientForPeer(peer, true))
-				status, err = client.GetMeshStatus()
+				updatedStatus, err := client.GetMeshStatus()
 				if err != nil {
 					log.WithName("proxy").Infof("failed to get mesh status from peer %s: %v", peer, err)
+				} else {
+					status = updatedStatus
 				}
 			}
 		}

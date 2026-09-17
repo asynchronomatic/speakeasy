@@ -401,12 +401,6 @@ func NewProxy(meshService core.MeshServiceProvider, cm config.ManagerProvider) (
 	p.mux.HandleFunc("POST /api/mesh/login", p.handle(p.loginHandler))
 
 	// test code remove
-	p.mux.HandleFunc("GET /api/mesh/notify", p.handle(func(rpc *jsonrpc.RPC) error {
-		log.WithName("proxy").Debugf("notify")
-		p.mesh.SignalUpdate()
-		return nil
-	}))
-
 	p.mux.HandleFunc("POST /api/mesh/refresh/ticket", p.authenticated(jsonrpc.AsAdmin(p.refreshTicketHandler)))
 	p.mux.HandleFunc("GET /api/mesh/models", p.authenticated(jsonrpc.AsAdmin(p.uiModelsHandler)))
 	p.mux.HandleFunc("GET /api/mesh/members", p.authenticated(jsonrpc.AsAdmin(p.meshMembers)))
